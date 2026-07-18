@@ -3,6 +3,418 @@ info:
   title: match-tournament
   version: 0.1.0
   description: >
-    Contract stub. Per rules.md Section 2.3, this file must stay in sync
-    with the implementation; CI fails the build on drift once endpoints exist.
-paths: {}
+    Tournaments, teams, matches, playing conditions, and consent-gated match
+    rosters (Phase 1, docs/phases.md). Per rules.md Section 2.3, this file
+    must stay in sync with the implementation; CI fails the build on drift
+    once endpoints exist.
+paths:
+  /healthz:
+    get:
+      summary: Liveness check
+      responses:
+        "200":
+          description: OK
+
+  /v1/organizations/{orgID}/tournaments:
+    post:
+      summary: Create a tournament with default playing conditions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTournamentRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+        "400":
+          description: Invalid request (e.g. bad camera_tier or negative review quota)
+        "403":
+          description: Caller does not belong to orgID, or lacks manage_matches permission
+    get:
+      summary: List tournaments in the organization
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tournament"
+
+  /v1/organizations/{orgID}/tournaments/{tournamentID}:
+    get:
+      summary: Fetch a tournament
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/TournamentID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+        "403":
+          description: Caller does not belong to orgID
+        "404":
+          description: Tournament not found
+
+  /v1/organizations/{orgID}/teams:
+    post:
+      summary: Create a team
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "403":
+          description: Caller does not belong to orgID, or lacks manage_matches permission
+    get:
+      summary: List teams in the organization
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Team"
+
+  /v1/organizations/{orgID}/teams/{teamID}:
+    get:
+      summary: Fetch a team
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/TeamID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "404":
+          description: Team not found
+
+  /v1/organizations/{orgID}/matches:
+    post:
+      summary: Create a match
+      description: >
+        If tournament_id is set and playing_conditions is omitted, the
+        tournament's default_conditions are copied in. An explicit
+        playing_conditions always overrides. Both home_team_id and
+        away_team_id must reference existing teams within orgID.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMatchRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Match"
+        "403":
+          description: Caller does not belong to orgID, or lacks manage_matches permission
+        "404":
+          description: Referenced tournament or team not found within orgID
+    get:
+      summary: List matches in the organization
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Match"
+
+  /v1/organizations/{orgID}/matches/{matchID}:
+    get:
+      summary: Fetch a match
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Match"
+        "404":
+          description: Match not found
+
+  /v1/organizations/{orgID}/matches/{matchID}/roster:
+    post:
+      summary: Add a player to the match roster
+      description: >
+        Calls Identity & Access's GET /v1/users/{userID}/consent, forwarding
+        the caller's own bearer token, before adding the player — per
+        prd.md Section 5.6.2, a non-consenting player must never appear on
+        a match roster. Rejects with 403 if the player hasn't granted both
+        video_capture and ai_analysis consent.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddRosterEntryRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RosterEntry"
+        "403":
+          description: >
+            Caller does not belong to orgID, lacks manage_matches
+            permission, or the player has not granted required DRS consent
+        "404":
+          description: Match or team not found within orgID
+    get:
+      summary: List a match's roster
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RosterEntry"
+
+  /v1/organizations/{orgID}/matches/{matchID}/roster/{userID}:
+    delete:
+      summary: Remove a player from the match roster
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+        - name: userID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+        "403":
+          description: Caller does not belong to orgID, or lacks manage_matches permission
+        "404":
+          description: Roster entry not found
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Tokens are issued by Identity & Access and verified here — this
+        service holds no login/token-issuance endpoint of its own.
+
+  parameters:
+    OrgID:
+      name: orgID
+      in: path
+      required: true
+      schema:
+        type: string
+    TournamentID:
+      name: tournamentID
+      in: path
+      required: true
+      schema:
+        type: string
+    TeamID:
+      name: teamID
+      in: path
+      required: true
+      schema:
+        type: string
+    MatchID:
+      name: matchID
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    PlayingConditions:
+      type: object
+      properties:
+        review_quota_per_innings:
+          type: integer
+        decision_types_enabled:
+          type: array
+          items:
+            type: string
+            enum: [lbw, edge, run_out, stumping]
+        camera_tier:
+          type: string
+          enum: [accessible, broadcast]
+
+    Tournament:
+      type: object
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        name:
+          type: string
+        default_conditions:
+          $ref: "#/components/schemas/PlayingConditions"
+
+    CreateTournamentRequest:
+      type: object
+      required: [name, default_conditions]
+      properties:
+        name:
+          type: string
+        default_conditions:
+          $ref: "#/components/schemas/PlayingConditions"
+
+    Team:
+      type: object
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        name:
+          type: string
+
+    CreateTeamRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    Match:
+      type: object
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        tournament_id:
+          type: string
+          nullable: true
+        home_team_id:
+          type: string
+        away_team_id:
+          type: string
+        venue:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+        playing_conditions:
+          $ref: "#/components/schemas/PlayingConditions"
+
+    CreateMatchRequest:
+      type: object
+      required: [home_team_id, away_team_id, venue, scheduled_at]
+      properties:
+        tournament_id:
+          type: string
+          nullable: true
+        home_team_id:
+          type: string
+        away_team_id:
+          type: string
+        venue:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+        playing_conditions:
+          $ref: "#/components/schemas/PlayingConditions"
+
+    RosterEntry:
+      type: object
+      properties:
+        match_id:
+          type: string
+        team_id:
+          type: string
+        user_id:
+          type: string
+        added_at:
+          type: string
+          format: date-time
+        added_by:
+          type: string
+
+    AddRosterEntryRequest:
+      type: object
+      required: [team_id, user_id]
+      properties:
+        team_id:
+          type: string
+        user_id:
+          type: string

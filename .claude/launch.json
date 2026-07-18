@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "identity-access",
+      "runtimeExecutable": "C:\\Program Files\\Go\\bin\\go.exe",
+      "runtimeArgs": ["-C", "services", "run", "./identity-access/cmd"],
+      "port": 8080
+    },
+    {
+      "name": "match-tournament",
+      "runtimeExecutable": "C:\\Program Files\\Go\\bin\\go.exe",
+      "runtimeArgs": ["-C", "services", "run", "./match-tournament/cmd"],
+      "port": 8080
+    },
+    {
+      "name": "review-orchestration",
+      "runtimeExecutable": "C:\\Program Files\\Go\\bin\\go.exe",
+      "runtimeArgs": ["-C", "services", "run", "./review-orchestration/cmd"],
+      "port": 8080
+    },
+    {
+      "name": "analytics-reporting",
+      "runtimeExecutable": "C:\\Program Files\\Go\\bin\\go.exe",
+      "runtimeArgs": ["-C", "services", "run", "./analytics-reporting/cmd"],
+      "port": 8080
+    },
+    {
+      "name": "web-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/web-app", "run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "umpire-console",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/umpire-console", "run", "dev", "--", "--port", "5174"],
+      "port": 5174
+    }
+  ]
+}
