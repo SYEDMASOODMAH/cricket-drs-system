@@ -1,0 +1,28 @@
+[project]
+name = "cricket-drs-ml-pipeline"
+version = "0.1.0"
+description = "CV/ML pipeline: ball tracking, edge detection, LBW engine, run-out detection"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.2",
+    "opencv-python>=4.9",
+    "numpy>=1.26",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "mypy>=1.9",
+    "ruff>=0.4",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true

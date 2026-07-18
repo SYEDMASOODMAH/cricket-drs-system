@@ -1,0 +1,41 @@
+# Go
+/services/**/cmd/*.exe
+/edge-agent/**/*.exe
+**/bin/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Flutter/Dart
+apps/mobile-app/.dart_tool/
+apps/mobile-app/build/
+apps/mobile-app/.flutter-plugins
+apps/mobile-app/.flutter-plugins-dependencies
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# Env / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  go-services:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+
+  go-edge-agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: edge-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go build ./...
+      - run: go vet ./...
+
+  ml-pipeline:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ml-pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: mypy .
+      - run: pytest
+
+  web-app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npm run lint
+      - run: npm run build
+
+  umpire-console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/umpire-console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npm run lint
+      - run: npm run build

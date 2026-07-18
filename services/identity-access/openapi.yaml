@@ -1,0 +1,8 @@
+openapi: 3.0.3
+info:
+  title: identity-access
+  version: 0.1.0
+  description: >
+    Contract stub. Per rules.md Section 2.3, this file must stay in sync
+    with the implementation; CI fails the build on drift once endpoints exist.
+paths: {}
