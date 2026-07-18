@@ -6,7 +6,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +15,20 @@ import (
 	"github.com/cricketdrs/services/identity-access/internal/security"
 	"github.com/cricketdrs/services/identity-access/internal/service"
 )
+
+// insecureDevSigningKey is the fallback JWT_SIGNING_KEY used by both
+// identity-access and match-tournament when the env var is unset. It must
+// be identical in both services' source — see the matching constant and
+// comment in match-tournament/cmd/main.go. This exists purely so a
+// zero-config single-command dev/preview run (e.g. this repo's
+// .claude/launch.json, whose format has no way to inject an env var) has
+// the two services able to talk to each other out of the box. It is
+// obviously not a secret: it's committed, identical across services, and
+// logged loudly on every use. Anything beyond solo local dev/preview
+// (shared dev environments, staging, production) must set a real
+// JWT_SIGNING_KEY explicitly — see architecture.md Section 15 and this
+// service's README.
+const insecureDevSigningKey = "INSECURE-DEV-ONLY-SHARED-SIGNING-KEY-DO-NOT-USE-BEYOND-LOCAL-PREVIEW"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -48,20 +61,15 @@ func main() {
 // jwtSigningKey reads JWT_SIGNING_KEY from the environment — never
 // committed, and in a deployed environment injected by a secrets manager
 // (architecture.md Section 15; wiring that injection is deferred until a
-// cloud provider is chosen, see docs/adr/). If unset, a random ephemeral
-// key is generated so local development works out of the box per Phase
-// 1's completion criteria — this is explicitly dev-only: tokens won't
-// survive a restart, and it must never be relied on outside local dev.
+// cloud provider is chosen, see docs/adr/). If unset, falls back to
+// insecureDevSigningKey so local development works out of the box per
+// Phase 1's completion criteria, and so it matches match-tournament's own
+// fallback (see that constant's doc comment) without requiring the env
+// var to be set by hand for casual solo preview use.
 func jwtSigningKey() []byte {
 	if key := os.Getenv("JWT_SIGNING_KEY"); key != "" {
 		return []byte(key)
 	}
-
-	slog.Warn("JWT_SIGNING_KEY not set; generating an ephemeral signing key for local development only — tokens will not survive a restart, and this must never be relied on in a deployed environment")
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		slog.Error("identity-access: crypto/rand unavailable, cannot start", "error", err)
-		os.Exit(1)
-	}
-	return key
+	slog.Warn("JWT_SIGNING_KEY not set; falling back to the shared insecure dev-only signing key — never rely on this outside local solo preview")
+	return []byte(insecureDevSigningKey)
 }

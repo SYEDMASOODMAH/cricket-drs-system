@@ -42,7 +42,7 @@ Health check: `GET http://localhost:8080/healthz`
 | Variable | Default | Notes |
 |---|---|---|
 | `PORT` | `8080` | |
-| `JWT_SIGNING_KEY` | *(generated)* | If unset, a random ephemeral key is generated at startup — **local dev only**, tokens won't survive a restart and this must never be relied on in a deployed environment. In production this is injected by a secrets manager (`architecture.md` Section 15); wiring that is deferred until a cloud provider is chosen. |
+| `JWT_SIGNING_KEY` | shared insecure dev-only key | If unset, falls back to a fixed, committed dev-only constant (`insecureDevSigningKey` in `cmd/main.go`) — identical to match-tournament's own fallback, so the two services can talk to each other with zero config for solo local preview (e.g. this repo's `.claude/launch.json`, whose format can't inject an env var). **Not a real secret** — logged loudly on use, and anything beyond solo local preview must set a real value. In production this is injected by a secrets manager (`architecture.md` Section 15); wiring that is deferred until a cloud provider is chosen. |
 
 ### Example walkthrough
 

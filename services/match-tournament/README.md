@@ -30,11 +30,14 @@ importing Identity & Access's code — Go's `internal/` visibility rules make th
 across services, and a new shared package wasn't justified yet for two data points (see the
 implementation plan's "Decision flagged" note; revisit once a third service needs the same thing).
 
-**Consequence: both services must be started with the exact same `JWT_SIGNING_KEY`.** Unlike
-Identity & Access, this service does **not** fall back to a random ephemeral key when
-`JWT_SIGNING_KEY` is unset — it refuses to start instead. A generated fallback here would silently
-never validate any token Identity & Access issues, which is a worse failure mode than refusing to
-start with a clear error.
+**Consequence: both services must be started with the exact same `JWT_SIGNING_KEY`.** If unset, both
+services fall back to `insecureDevSigningKey` — an identical, committed, obviously-fake constant
+defined in each service's `cmd/main.go` (both log a loud `WARN` when they use it). This exists purely
+so a zero-config single-command dev/preview run (this repo's `.claude/launch.json`, whose format has
+no way to inject an env var) has the two services able to talk to each other without any manual setup.
+It is **not a real secret** — anything beyond solo local preview (a shared dev environment, staging,
+production, or running one service with an explicit `JWT_SIGNING_KEY` and the other without) must set
+the same real value on both:
 
 ```bash
 # both services need this to be the same value
@@ -50,8 +53,7 @@ without a database. **Data does not survive a restart.**
 ## Run locally
 
 ```bash
-export JWT_SIGNING_KEY="some-shared-dev-secret"   # must match identity-access's
-go run ./cmd
+go run ./cmd   # or set JWT_SIGNING_KEY first if identity-access has one set too
 ```
 
 Health check: `GET http://localhost:8080/healthz`
@@ -61,7 +63,7 @@ Health check: `GET http://localhost:8080/healthz`
 | Variable | Default | Notes |
 |---|---|---|
 | `PORT` | `8080` | Change this if running alongside identity-access on the same machine — they both default to 8080 |
-| `JWT_SIGNING_KEY` | *(required — refuses to start if unset)* | Must match the value Identity & Access was started with |
+| `JWT_SIGNING_KEY` | shared insecure dev-only key | Falls back to a fixed, committed dev-only constant if unset — see "Shared auth" above. Must match the value Identity & Access was started with |
 | `IDENTITY_ACCESS_URL` | `http://localhost:8080` | Base URL used for the consent-gate check |
 
 ### Example walkthrough (assumes Identity & Access is already running and you have a token — see its README)
