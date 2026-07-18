@@ -3,6 +3,302 @@ info:
   title: identity-access
   version: 0.1.0
   description: >
-    Contract stub. Per rules.md Section 2.3, this file must stay in sync
-    with the implementation; CI fails the build on drift once endpoints exist.
-paths: {}
+    Multi-tenant organization/user/RBAC and consent-capture API (Phase 1,
+    docs/phases.md). Per rules.md Section 2.3, this file must stay in sync
+    with the implementation; CI fails the build on drift once endpoints
+    exist.
+paths:
+  /healthz:
+    get:
+      summary: Liveness check
+      responses:
+        "200":
+          description: OK
+
+  /v1/organizations:
+    post:
+      summary: Create a tenant (club/league/board) and its first admin user
+      description: >
+        Unauthenticated by design for Phase 1 — this is club/league
+        onboarding, not an action gated by an existing tenant's RBAC. See
+        internal/service/organization.go.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrganizationRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrganizationResponse"
+        "400":
+          description: Invalid request (e.g. empty organization name)
+
+  /v1/auth/login:
+    post:
+      summary: Authenticate with organization + email + password, receive a bearer token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+
+  /v1/organizations/{orgID}/users:
+    post:
+      summary: Add a user to an organization with a role
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteUserRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "403":
+          description: Caller does not belong to orgID, or lacks manage_users permission
+
+  /v1/organizations/{orgID}/users/{userID}:
+    get:
+      summary: Fetch a user
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "403":
+          description: Caller does not belong to orgID
+        "404":
+          description: User not found
+
+  /v1/organizations/{orgID}/users/{userID}/roles:
+    post:
+      summary: Change a user's role
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignRoleRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "403":
+          description: Caller does not belong to orgID, or lacks manage_users permission
+
+  /v1/users/{userID}/consent:
+    post:
+      summary: Grant or revoke a single consent type for a user
+      description: >
+        Organization is taken from the authenticated caller, not the URL —
+        a caller only ever manages consent within their own tenant. Allowed
+        callers: the user themself, their guardian on file (for a minor),
+        or an organizer admin capturing initial consent (prd.md Section
+        5.6.1). See internal/service/consent.go.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRecord"
+        "400":
+          description: Invalid request (e.g. minor with no guardian on file)
+        "403":
+          description: Caller is not the user, their guardian, or an organizer admin
+    get:
+      summary: Fetch a user's consent record
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRecord"
+        "403":
+          description: Caller is not authorized to view this record
+        "404":
+          description: No consent record exists yet
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    OrgID:
+      name: orgID
+      in: path
+      required: true
+      schema:
+        type: string
+    UserID:
+      name: userID
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [player, coach, umpire, organizer_admin, board_admin, fan]
+
+    CreateOrganizationRequest:
+      type: object
+      required: [name, admin_email, admin_password]
+      properties:
+        name:
+          type: string
+        admin_email:
+          type: string
+        admin_password:
+          type: string
+
+    CreateOrganizationResponse:
+      type: object
+      properties:
+        organization:
+          $ref: "#/components/schemas/Organization"
+        admin:
+          $ref: "#/components/schemas/User"
+
+    InviteUserRequest:
+      type: object
+      required: [email, password, role]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+          enum: [player, coach, umpire, organizer_admin, board_admin, fan]
+
+    AssignRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [player, coach, umpire, organizer_admin, board_admin, fan]
+
+    LoginRequest:
+      type: object
+      required: [organization_id, email, password]
+      properties:
+        organization_id:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+
+    ConsentRequest:
+      type: object
+      required: [consent_type, grant]
+      properties:
+        consent_type:
+          type: string
+          enum: [video_capture, ai_analysis, footage_reuse]
+        grant:
+          type: boolean
+        is_minor:
+          type: boolean
+          description: Only used the first time a record is created for this user.
+        guardian_user_id:
+          type: string
+          description: Required if is_minor is true and no record exists yet.
+
+    ConsentRecord:
+      type: object
+      properties:
+        user_id:
+          type: string
+        organization_id:
+          type: string
+        grants:
+          type: object
+          additionalProperties:
+            type: boolean
+        is_minor:
+          type: boolean
+        guardian_user_id:
+          type: string
