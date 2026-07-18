@@ -32,6 +32,21 @@ jobs:
           go-version: '1.23'
       - run: go build ./...
       - run: go vet ./...
+      - run: go test ./...
+
+  mobile-app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
 
   ml-pipeline:
     runs-on: ubuntu-latest
