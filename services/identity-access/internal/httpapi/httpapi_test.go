@@ -11,6 +11,7 @@ import (
 	"github.com/cricketdrs/services/identity-access/internal/memstore"
 	"github.com/cricketdrs/services/identity-access/internal/security"
 	"github.com/cricketdrs/services/identity-access/internal/service"
+	"github.com/cricketdrs/services/observability"
 )
 
 func newTestAPI() http.Handler {
@@ -21,7 +22,15 @@ func newTestAPI() http.Handler {
 		security.NewBcryptHasher(),
 		security.NewJWTIssuer([]byte("test-signing-key-do-not-use-in-prod")),
 	)
-	return httpapi.New(svc).Router()
+	// observability.New only fails if the (stdout-only, no real backend)
+	// tracer provider can't be built at all — a construction-time
+	// programming error, not a runtime condition tests should assert on,
+	// so panic rather than threading *testing.T through 17 call sites.
+	obs, err := observability.New("identity-access-test")
+	if err != nil {
+		panic(err)
+	}
+	return httpapi.New(svc, obs).Router()
 }
 
 func doJSON(t *testing.T, h http.Handler, method, path, token string, body any) *httptest.ResponseRecorder {

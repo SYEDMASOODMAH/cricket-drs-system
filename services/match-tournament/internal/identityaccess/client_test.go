@@ -17,7 +17,7 @@ func TestIsEligibleForDRS_BothGrantsPresent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL)
+	c := NewClient(srv.URL, nil)
 	eligible, err := c.IsEligibleForDRS(context.Background(), "test-token", "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -34,7 +34,7 @@ func TestIsEligibleForDRS_OnlyOneGrantPresent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL)
+	c := NewClient(srv.URL, nil)
 	eligible, err := c.IsEligibleForDRS(context.Background(), "test-token", "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -50,7 +50,7 @@ func TestIsEligibleForDRS_NotFoundIsFalseNotError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL)
+	c := NewClient(srv.URL, nil)
 	eligible, err := c.IsEligibleForDRS(context.Background(), "test-token", "user-1")
 	if err != nil {
 		t.Fatalf("expected no error for a not-yet-created consent record, got %v", err)
@@ -66,7 +66,7 @@ func TestIsEligibleForDRS_ServerErrorIsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL)
+	c := NewClient(srv.URL, nil)
 	_, err := c.IsEligibleForDRS(context.Background(), "test-token", "user-1")
 	if err == nil {
 		t.Fatal("expected an error for a 500 response")
@@ -80,7 +80,7 @@ func TestIsEligibleForDRS_MalformedJSONIsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL)
+	c := NewClient(srv.URL, nil)
 	_, err := c.IsEligibleForDRS(context.Background(), "test-token", "user-1")
 	if err == nil {
 		t.Fatal("expected an error for a malformed response body")
@@ -93,7 +93,7 @@ func TestIsEligibleForDRS_ForbiddenIsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL)
+	c := NewClient(srv.URL, nil)
 	_, err := c.IsEligibleForDRS(context.Background(), "test-token", "user-1")
 	if err == nil {
 		t.Fatal("expected an error for a 403 response (distinct from 404's not-eligible-but-ok)")

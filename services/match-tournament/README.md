@@ -23,6 +23,18 @@ internal/
   httpapi/          chi router + handlers
 ```
 
+## Observability
+
+Metrics, tracing, and structured-request logging come from `services/observability` (shared with
+identity-access — see `docs/adr/0004-shared-observability-package.md`, and contrast with the "Shared
+auth" section below, which deliberately *doesn't* share code, for different reasons):
+
+- `GET /metrics` — Prometheus text format.
+- Traces export to stdout by default. The consent-gate HTTP call to Identity & Access
+  (`internal/identityaccess`) is wrapped so it's a proper child span of whatever request triggered it —
+  the roster-add flow produces a 3-span trace across both services (incoming roster-add request →
+  outgoing consent-check call → Identity & Access's incoming request), all sharing one trace ID.
+
 ## Shared auth with Identity & Access — read this before running both together
 
 This service duplicates a small (~60-line) JWT-verification adapter and the `Role` enum rather than

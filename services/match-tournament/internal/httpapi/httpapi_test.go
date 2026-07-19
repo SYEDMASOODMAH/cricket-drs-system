@@ -13,6 +13,7 @@ import (
 	"github.com/cricketdrs/services/match-tournament/internal/httpapi"
 	"github.com/cricketdrs/services/match-tournament/internal/memstore"
 	"github.com/cricketdrs/services/match-tournament/internal/service"
+	"github.com/cricketdrs/services/observability"
 )
 
 // fakeVerifier maps fixed token strings to fixed claims, standing in for
@@ -59,7 +60,15 @@ func newTestAPI(consentEligible map[domain.UserID]bool) http.Handler {
 		verifier,
 		&fakeConsentChecker{eligible: consentEligible},
 	)
-	return httpapi.New(svc).Router()
+	// observability.New only fails if the (stdout-only, no real backend)
+	// tracer provider can't be built at all — a construction-time
+	// programming error, not a runtime condition tests should assert on,
+	// so panic rather than threading *testing.T through every call site.
+	obs, err := observability.New("match-tournament-test")
+	if err != nil {
+		panic(err)
+	}
+	return httpapi.New(svc, obs).Router()
 }
 
 func doJSON(t *testing.T, h http.Handler, method, path, token string, body any) *httptest.ResponseRecorder {

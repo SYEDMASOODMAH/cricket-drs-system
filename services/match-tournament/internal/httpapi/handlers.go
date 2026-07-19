@@ -12,14 +12,16 @@ import (
 
 	"github.com/cricketdrs/services/match-tournament/internal/domain"
 	"github.com/cricketdrs/services/match-tournament/internal/service"
+	"github.com/cricketdrs/services/observability"
 )
 
 type API struct {
 	svc *service.Service
+	obs *observability.Observability
 }
 
-func New(svc *service.Service) *API {
-	return &API{svc: svc}
+func New(svc *service.Service, obs *observability.Observability) *API {
+	return &API{svc: svc, obs: obs}
 }
 
 func (a *API) handleHealthz(w http.ResponseWriter, r *http.Request) {

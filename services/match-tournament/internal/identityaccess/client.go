@@ -23,10 +23,17 @@ type Client struct {
 // NewClient builds a client against baseURL (Identity & Access's address —
 // e.g. http://localhost:8080 locally). A 5s timeout keeps a slow/hung
 // Identity & Access from blocking roster-management requests indefinitely.
-func NewClient(baseURL string) *Client {
+// transport is nil in tests (net/http.DefaultTransport is fine there);
+// cmd/main.go passes observability.HTTPClientTransport(nil) so the
+// consent-gate call shows up as a child span of whatever request
+// triggered it.
+func NewClient(baseURL string, transport http.RoundTripper) *Client {
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
 	return &Client{
 		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: 5 * time.Second},
+		httpClient: &http.Client{Timeout: 5 * time.Second, Transport: transport},
 	}
 }
 

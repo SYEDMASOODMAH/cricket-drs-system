@@ -6,14 +6,17 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/cricketdrs/services/identity-access/internal/httpapi"
 	"github.com/cricketdrs/services/identity-access/internal/memstore"
 	"github.com/cricketdrs/services/identity-access/internal/security"
 	"github.com/cricketdrs/services/identity-access/internal/service"
+	"github.com/cricketdrs/services/observability"
 )
 
 // insecureDevSigningKey is the fallback JWT_SIGNING_KEY used by both
@@ -41,6 +44,30 @@ func main() {
 
 	signingKey := jwtSigningKey()
 
+	obs, err := observability.New("identity-access")
+	if err != nil {
+		slog.Error("identity-access: failed to set up observability", "error", err)
+		os.Exit(1)
+	}
+	// This defer does not currently run in practice: http.ListenAndServe
+	// blocks until it returns an error, and the error path below calls
+	// os.Exit(1), which skips deferred calls. It's left in the shape a
+	// graceful-shutdown implementation (signal.NotifyContext +
+	// srv.Shutdown(ctx), no such mechanism exists anywhere in this
+	// codebase yet) would need, rather than omitted and re-added later —
+	// but that mechanism itself is out of scope here; flushing on exit is
+	// a nice-to-have, not a correctness requirement, since a batched
+	// stdout exporter losing its last few spans on process exit doesn't
+	// lose anything that matters yet (no real trace backend to consume
+	// them either).
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := obs.Shutdown(ctx); err != nil {
+			slog.Error("identity-access: observability shutdown failed", "error", err)
+		}
+	}()
+
 	svc := service.New(
 		memstore.NewOrganizationStore(),
 		memstore.NewUserStore(),
@@ -49,7 +76,7 @@ func main() {
 		security.NewJWTIssuer(signingKey),
 	)
 
-	api := httpapi.New(svc)
+	api := httpapi.New(svc, obs)
 
 	slog.Info("identity-access starting", "port", port)
 	if err := http.ListenAndServe(":"+port, api.Router()); err != nil {

@@ -21,6 +21,17 @@ internal/
 
 `cmd/main.go` is the only place these are wired together (`rules.md` Section 2.2).
 
+## Observability
+
+Metrics, tracing, and structured-request logging come from `services/observability` (shared with
+match-tournament — see `docs/adr/0004-shared-observability-package.md`), not this service's own code:
+
+- `GET /metrics` — Prometheus text format (request count/duration by method/route/status, plus Go
+  runtime/process collectors).
+- Traces export to stdout by default (no trace backend exists in this environment yet — deferred to
+  when cloud infrastructure exists). Every request gets a span; `internal/httpapi`'s structured log
+  lines include `trace_id` when a span is active, per `rules.md` Section 4.1.
+
 ## Persistence
 
 This is currently backed by an **in-memory store** (`internal/memstore`), not Postgres. There's no
