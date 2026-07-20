@@ -11,8 +11,9 @@ is the one deliberate exception to the Go-everywhere backend rule.
 | `lbw-engine` | Physics + ML residual LBW trajectory model |
 | `runout-detection` | Bail-motion + pose-based run-out/stumping analysis |
 | `model-registry` | Model versioning, evaluation, promotion/rollback |
+| `camera-calibration` | Extrinsic camera-pose estimation against known pitch geometry (Phase 2) |
 
-All five share one `pyproject.toml` at this level — a single dependency set and environment for now,
+All six share one `pyproject.toml` at this level — a single dependency set and environment for now,
 since they're tightly coupled by shared preprocessing (calibration, frame sync) and will likely run in
 the same GPU-backed service pool early on. Split into independent packages if/when they need
 independent deployment or dependency versions.

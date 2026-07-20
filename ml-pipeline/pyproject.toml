@@ -24,7 +24,15 @@ dev = [
 line-length = 100
 
 [tool.mypy]
-python_version = "3.11"
+# camera-calibration is the first sub-package to actually import numpy
+# (the other five are still empty stubs), which surfaced a real
+# incompatibility: numpy 2.5's own type stubs use PEP 695 `type` alias
+# syntax, which mypy only parses under a 3.12+ target — even though this
+# only affects reading numpy's stub file, not this project's own syntax.
+# The installed dev venv is already 3.12 (see ml-pipeline/README.md's
+# Setup section), so this just matches mypy's target to reality rather
+# than lowering numpy's version to fit a stale 3.11 target.
+python_version = "3.12"
 disallow_untyped_defs = true
 # Sibling tests/ dirs share the test_placeholder.py filename with no
 # __init__.py (hyphenated package dirs like ball-tracking/ can't carry
@@ -40,3 +48,12 @@ exclude = "^[^/]+/tests/"
 # tests/ dir onto sys.path and collides on that shared module name;
 # importlib mode imports each test file by its own path instead.
 addopts = "--import-mode=importlib"
+# None of the six sub-packages here are registered with setuptools'
+# package discovery (this pyproject.toml has no [tool.setuptools.packages]
+# config), so none of them are actually importable via a plain `pip
+# install -e .`. camera-calibration is the first sub-package whose tests
+# import its own package code (the other five's test_placeholder.py files
+# don't), so it's the first to need this — adding its source dir directly
+# to sys.path for the test session, rather than reworking package
+# discovery for all six at once.
+pythonpath = ["camera-calibration"]

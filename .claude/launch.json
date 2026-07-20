@@ -32,6 +32,12 @@
       "port": 8080
     },
     {
+      "name": "camera-calibration",
+      "runtimeExecutable": "C:\\Program Files\\Go\\bin\\go.exe",
+      "runtimeArgs": ["-C", "services", "run", "./camera-calibration/cmd"],
+      "port": 8080
+    },
+    {
       "name": "web-app",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "apps/web-app", "run", "dev"],

@@ -11,6 +11,7 @@ into separately-deployed services is a low-friction move, not a rewrite.
 | `identity-access` | Multi-tenant auth, RBAC |
 | `analytics-reporting` | Post-match, season, and scouting analytics |
 | `media-ingest-gateway` | Accepts uploaded match video clips, stores them in object storage (Phase 2) |
+| `camera-calibration` | Camera/venue registration, calibration-profile storage and validity (Phase 2) |
 
 `observability/` is a shared, non-`internal/` package (metrics/tracing/logging middleware) importable
 by every service above — see `docs/adr/0004-shared-observability-package.md` for why this one thing is

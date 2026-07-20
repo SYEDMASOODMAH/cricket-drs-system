@@ -9,10 +9,12 @@ type OrganizationID string
 type UserID string
 type MatchID string
 
-// CameraID identifies a physical camera. No Camera Calibration Service
-// exists yet (a separate, later Phase 2 slice), so this is currently just
-// an opaque string supplied by the uploader — not yet cross-validated
-// against a registered camera record.
+// CameraID identifies a physical camera. The registry this was waiting on
+// now exists at services/camera-calibration (docs/adr/0005), but this
+// field is still just an opaque string supplied by the uploader — live
+// cross-validation against a registered camera record is a documented
+// follow-up, not wired in yet (same "trusted foreign reference"
+// simplification already used for MatchID above).
 type CameraID string
 
 type ClipID string
