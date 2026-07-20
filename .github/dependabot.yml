@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # Go — two separate modules (rules.md Section 2.2 folder structure)
+  - package-ecosystem: "gomod"
+    directory: "/services"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "gomod"
+    directory: "/edge-agent"
+    schedule:
+      interval: "weekly"
+
+  # Python (ml-pipeline)
+  - package-ecosystem: "pip"
+    directory: "/ml-pipeline"
+    schedule:
+      interval: "weekly"
+
+  # npm (web-app, umpire-console)
+  - package-ecosystem: "npm"
+    directory: "/apps/web-app"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/apps/umpire-console"
+    schedule:
+      interval: "weekly"
+
+  # Dart/Flutter (mobile-app) — no CodeQL support (see codeql.yml), so
+  # this is its only automated dependency-vulnerability coverage.
+  - package-ecosystem: "pub"
+    directory: "/apps/mobile-app"
+    schedule:
+      interval: "weekly"
+
+  # GitHub Actions workflow dependencies (actions/checkout, codeql-action, etc.)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

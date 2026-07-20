@@ -1,0 +1,45 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, independent of pushes — catches newly-disclosed query/rule
+    # coverage against code that hasn't changed, per rules.md Section 6.5.
+    - cron: "0 6 * * 1"
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Dart/Flutter (apps/mobile-app) has no CodeQL support — covered
+        # by Dependabot instead (.github/dependabot.yml).
+        language: ["go", "javascript-typescript", "python"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      # autobuild handles the repo's two separate Go modules
+      # (services/, edge-agent/) and the Python/JS sources without
+      # per-language build steps. If Go analysis needs a more explicit
+      # build matrix later (e.g. autobuild only picking up one module),
+      # replace this step with per-module `go build ./...` calls.
+      - uses: github/codeql-action/autobuild@v3
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
