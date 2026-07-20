@@ -10,6 +10,12 @@ into separately-deployed services is a low-friction move, not a rewrite.
 | `match-tournament` | Match setup, playing conditions, review-quota enforcement |
 | `identity-access` | Multi-tenant auth, RBAC |
 | `analytics-reporting` | Post-match, season, and scouting analytics |
+| `media-ingest-gateway` | Accepts uploaded match video clips, stores them in object storage (Phase 2) |
+
+`observability/` is a shared, non-`internal/` package (metrics/tracing/logging middleware) importable
+by every service above — see `docs/adr/0004-shared-observability-package.md` for why this one thing is
+shared while most cross-service code (JWT verification, the `Role` enum) is deliberately duplicated
+per-service instead.
 
 ## Conventions
 
@@ -38,7 +44,7 @@ go run ./review-orchestration/cmd
 ## Adding a new service
 
 1. Create the directory with `cmd/`, `internal/`, `README.md`, following the pattern of the existing
-   four services.
+   services.
 2. Register it in this table.
 3. If it's not purely internal, add an `openapi.yaml` contract stub.
 4. Open an ADR in `docs/adr/` if it changes the architecture described in `docs/architecture.md`.

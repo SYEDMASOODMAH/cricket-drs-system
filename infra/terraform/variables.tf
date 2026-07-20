@@ -21,3 +21,14 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "clips_bucket_name" {
+  description = <<-EOT
+    S3 bucket name for match video clips (modules/storage). Globally
+    unique across all AWS accounts, not just yours — this default will
+    collide. Override before applying, same caveat as
+    bootstrap/variables.tf's state_bucket_name.
+  EOT
+  type        = string
+  default     = "cricket-drs-clips"
+}

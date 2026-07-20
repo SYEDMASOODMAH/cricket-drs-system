@@ -1,0 +1,167 @@
+openapi: 3.0.3
+info:
+  title: media-ingest-gateway
+  version: 0.1.0
+  description: >
+    Accepts uploaded match video clips and stores them (Phase 2, first
+    slice — docs/phases.md). Per rules.md Section 2.3, this file must stay
+    in sync with the implementation; CI fails the build on drift once
+    endpoints exist.
+
+    Transport note: real venue-to-cloud transport is SRT/WebRTC per
+    architecture.md Section 10; this is a plain authenticated HTTP upload
+    for now since there's no edge-agent streaming client to receive from
+    yet — see this service's README.
+paths:
+  /healthz:
+    get:
+      summary: Liveness check
+      responses:
+        "200":
+          description: OK
+
+  /v1/organizations/{orgID}/matches/{matchID}/clips:
+    post:
+      summary: Upload a video clip
+      description: >
+        Request body is the clip's raw bytes (application/octet-stream).
+        The server computes a SHA-256 hash of the content (the basic
+        anti-tampering measure described in the implementation plan — full
+        replay/liveness detection is deferred) and records it with the
+        clip's metadata.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+        - name: camera_id
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Clip"
+        "400":
+          description: Invalid request (e.g. empty body, missing camera_id)
+        "403":
+          description: Caller does not belong to orgID, or lacks manage_matches-equivalent permission
+    get:
+      summary: List clips for a match
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Clip"
+
+  /v1/organizations/{orgID}/matches/{matchID}/clips/{clipID}:
+    get:
+      summary: Fetch a clip's metadata
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+        - $ref: "#/components/parameters/ClipID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Clip"
+        "404":
+          description: Clip not found
+
+  /v1/organizations/{orgID}/matches/{matchID}/clips/{clipID}/download:
+    get:
+      summary: Download a clip's raw bytes
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+        - $ref: "#/components/parameters/ClipID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Clip not found
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Tokens are issued by Identity & Access and verified here — this
+        service holds no login/token-issuance endpoint of its own.
+
+  parameters:
+    OrgID:
+      name: orgID
+      in: path
+      required: true
+      schema:
+        type: string
+    MatchID:
+      name: matchID
+      in: path
+      required: true
+      schema:
+        type: string
+    ClipID:
+      name: clipID
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    Clip:
+      type: object
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        match_id:
+          type: string
+        camera_id:
+          type: string
+        content_hash:
+          type: string
+          description: Hex-encoded SHA-256 of the clip's bytes.
+        size_bytes:
+          type: integer
+        uploaded_at:
+          type: string
+          format: date-time
+        uploaded_by:
+          type: string

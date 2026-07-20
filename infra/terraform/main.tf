@@ -1,8 +1,8 @@
-# Root Terraform config (Phase 1). Per docs/architecture.md Section 14:
+# Root Terraform config (Phase 1/2). Per docs/architecture.md Section 14:
 # Kubernetes (EKS/GKE) for application services, managed GPU node pools for
 # ML inference, object storage for video/clips. Modules land as each is
-# needed rather than all at once — gpu_pool (Phase 3) and storage (Phase 2)
-# stay unimplemented below until those phases actually need them.
+# needed rather than all at once — gpu_pool (Phase 3) stays unimplemented
+# below until that phase actually needs it.
 #
 # STATUS: written, not applied. See README.md — this environment has no
 # AWS credentials, and provisioning a real EKS cluster costs real recurring
@@ -47,5 +47,15 @@ module "secrets" {
   tags                    = local.common_tags
 }
 
+module "storage" {
+  source = "./modules/storage"
+
+  project_name            = var.project_name
+  environment             = var.environment
+  bucket_name             = var.clips_bucket_name
+  oidc_provider_arn       = module.cluster.oidc_provider_arn
+  cluster_oidc_issuer_url = module.cluster.cluster_oidc_issuer_url
+  tags                    = local.common_tags
+}
+
 # module "gpu_pool" { source = "./modules/gpu_pool" } # Phase 3
-# module "storage" { source = "./modules/storage" }   # Phase 2

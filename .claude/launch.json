@@ -26,6 +26,12 @@
       "port": 8080
     },
     {
+      "name": "media-ingest-gateway",
+      "runtimeExecutable": "C:\\Program Files\\Go\\bin\\go.exe",
+      "runtimeArgs": ["-C", "services", "run", "./media-ingest-gateway/cmd"],
+      "port": 8080
+    },
+    {
       "name": "web-app",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "apps/web-app", "run", "dev"],
