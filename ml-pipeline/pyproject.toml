@@ -48,12 +48,12 @@ exclude = "^[^/]+/tests/"
 # tests/ dir onto sys.path and collides on that shared module name;
 # importlib mode imports each test file by its own path instead.
 addopts = "--import-mode=importlib"
-# None of the six sub-packages here are registered with setuptools'
+# None of the seven sub-packages here are registered with setuptools'
 # package discovery (this pyproject.toml has no [tool.setuptools.packages]
 # config), so none of them are actually importable via a plain `pip
-# install -e .`. camera-calibration is the first sub-package whose tests
-# import its own package code (the other five's test_placeholder.py files
-# don't), so it's the first to need this — adding its source dir directly
-# to sys.path for the test session, rather than reworking package
-# discovery for all six at once.
-pythonpath = ["camera-calibration"]
+# install -e .`. camera-calibration and time-sync are the two sub-packages
+# whose tests import their own package code (the placeholder-stub ones'
+# test_placeholder.py files don't), so they're the ones that need this —
+# adding each source dir directly to sys.path for the test session, rather
+# than reworking package discovery for all seven at once.
+pythonpath = ["camera-calibration", "time-sync"]

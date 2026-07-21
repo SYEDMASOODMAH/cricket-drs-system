@@ -32,6 +32,7 @@ func (a *API) Router() http.Handler {
 		r.Get("/v1/organizations/{orgID}/matches/{matchID}/clips", a.handleListClips)
 		r.Get("/v1/organizations/{orgID}/matches/{matchID}/clips/{clipID}", a.handleGetClip)
 		r.Get("/v1/organizations/{orgID}/matches/{matchID}/clips/{clipID}/download", a.handleDownloadClip)
+		r.Put("/v1/organizations/{orgID}/matches/{matchID}/clips/{clipID}/sync", a.handleSubmitSync)
 	})
 
 	return r

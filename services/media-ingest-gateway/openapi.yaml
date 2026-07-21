@@ -12,6 +12,12 @@ info:
     architecture.md Section 10; this is a plain authenticated HTTP upload
     for now since there's no edge-agent streaming client to receive from
     yet — see this service's README.
+
+    Sync note: this service stores multi-camera time-sync offsets
+    (architecture.md Section 5 assigns "time-synchronizes multi-camera
+    feeds" to it directly); the actual cross-correlation computation runs
+    externally in ml-pipeline/time-sync (docs/adr/0006) and is submitted
+    here as an already-computed result.
 paths:
   /healthz:
     get:
@@ -113,6 +119,52 @@ paths:
         "404":
           description: Clip not found
 
+  /v1/organizations/{orgID}/matches/{matchID}/clips/{clipID}/sync:
+    put:
+      summary: Submit a computed multi-camera sync offset for a clip
+      description: >
+        offset_ms and correlation_score are already-computed values (see
+        ml-pipeline/time-sync's find_offset, docs/adr/0006) — this
+        endpoint stores and evaluates them, it does not run the
+        correlation itself. reference_clip_id must be another clip in the
+        same match; a new submission replaces any previous sync record for
+        this clip.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+        - $ref: "#/components/parameters/ClipID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference_clip_id, offset_ms, correlation_score]
+              properties:
+                reference_clip_id:
+                  type: string
+                offset_ms:
+                  type: integer
+                  description: Signed offset in milliseconds; positive means this clip lags the reference clip.
+                correlation_score:
+                  type: number
+                  description: Normalized cross-correlation peak, -1.0 to 1.0. Compared against a confidence threshold to set sync_confident.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Clip"
+        "400":
+          description: Invalid request (e.g. self-referencing clip, correlation_score out of range)
+        "403":
+          description: Caller does not belong to orgID, or lacks organizer_admin
+        "404":
+          description: Clip or reference clip not found
+
 components:
   securitySchemes:
     bearerAuth:
@@ -165,3 +217,20 @@ components:
           format: date-time
         uploaded_by:
           type: string
+        sync_offset_ms:
+          type: integer
+          nullable: true
+          description: Present only after a sync offset has been submitted for this clip.
+        sync_reference_clip_id:
+          type: string
+          nullable: true
+        sync_correlation_score:
+          type: number
+          nullable: true
+        sync_confident:
+          type: boolean
+          description: True if sync_correlation_score meets the confidence threshold (domain.MinSyncCorrelationScore).
+        synced_at:
+          type: string
+          format: date-time
+          nullable: true

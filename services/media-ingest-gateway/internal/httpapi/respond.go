@@ -38,6 +38,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrMatchIDEmpty),
 		errors.Is(err, domain.ErrCameraIDEmpty),
 		errors.Is(err, domain.ErrEmptyContent),
+		errors.Is(err, domain.ErrSyncSelfReference),
+		errors.Is(err, domain.ErrInvalidCorrelation),
 		errors.Is(err, domain.ErrInvalidRole):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, domain.ErrInvalidToken):

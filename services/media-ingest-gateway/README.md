@@ -1,9 +1,9 @@
 # media-ingest-gateway
 
-**Status:** Phase 2 slice implemented — accepts uploaded match video clips and stores them. See
-`/docs/architecture.md` Section 5 for this service's overall responsibilities and `/docs/phases.md`
-Phase 2 for what's still ahead (the edge-agent's actual camera capture, Camera Calibration Service,
-SRT/WebRTC transport).
+**Status:** Phase 2 slices implemented — accepts uploaded match video clips, stores them, and stores
+multi-camera time-sync offsets computed against them. See `/docs/architecture.md` Section 5 for this
+service's overall responsibilities and `/docs/phases.md` Phase 2 for what's still ahead (the edge-agent's
+actual camera capture, SRT/WebRTC transport).
 
 ## Architecture
 
@@ -14,16 +14,29 @@ different concerns with different storage technologies.
 
 ```
 internal/
-  domain/          Clip, Role enum + CanUploadClips, sentinel errors
-  service/         UploadClip / GetClip / ListClips / DownloadClip use-cases,
+  domain/          Clip (+ sync fields, ApplySyncOffset, SyncConfident), Role enum + CanUploadClips,
+                    sentinel errors
+  service/         UploadClip / GetClip / ListClips / DownloadClip / SubmitSyncOffset use-cases,
                     ClipRepository + ObjectStore ports
-  memstore/         in-memory ClipRepository (metadata: org, match, camera, hash, size, time)
+  memstore/         in-memory ClipRepository (metadata: org, match, camera, hash, size, time, sync)
   objectstore/      ObjectStore's two adapters: memory.go (in-memory bytes, tests/local dev)
                     and s3.go (real AWS SDK v2, unit-tested against a fake — see "Object storage" below)
   security/         JWT *verify-only* adapter — this service never issues tokens, only validates
                     ones Identity & Access minted (see "Shared auth" below)
   httpapi/          chi router + handlers
 ```
+
+## Multi-camera time sync
+
+`architecture.md` Section 5 assigns "time-synchronizes multi-camera feeds" directly to this service
+(unlike Camera Calibration, which got its own service — see `docs/adr/0006` for why sync didn't). A
+clip's `Sync*` fields (`internal/domain/clip.go`) record an offset relative to another clip in the same
+match, submitted via `PUT .../clips/{clipID}/sync`. **This service never computes the offset itself** —
+the actual audio cross-correlation runs in `ml-pipeline/time-sync` (`docs/adr/0006`), tested against
+synthetic audio fixtures rather than real camera footage. `Clip.SyncConfident()` compares the submitted
+`correlation_score` against `domain.MinSyncCorrelationScore` — a placeholder threshold (0.5), since no
+document specifies a real one (`phases.md`'s Phase 2 completion criteria says only "within a defined
+tolerance," never a number).
 
 ## Object storage
 
@@ -91,6 +104,11 @@ curl -s "localhost:8080/v1/organizations/<org id>/matches/<match id>/clips" \
 # Download a clip back
 curl -s "localhost:8080/v1/organizations/<org id>/matches/<match id>/clips/<clip id>/download" \
   -H "Authorization: Bearer <token>" -o downloaded.mp4
+
+# Submit a computed sync offset (offset_ms/correlation_score from ml-pipeline/time-sync's find_offset)
+curl -s -X PUT "localhost:8080/v1/organizations/<org id>/matches/<match id>/clips/<clip id>/sync" \
+  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+  -d '{"reference_clip_id":"<other clip id>","offset_ms":250,"correlation_score":0.92}'
 ```
 
 Full endpoint set: `openapi.yaml`.
@@ -118,3 +136,9 @@ is exercised directly in `internal/service` and `internal/httpapi`, same as the 
   foreign reference for this Phase 2 "basic" slice.
 - **JWT verification and the `Role` enum are duplicated a third time** — see "Shared auth" above; worth
   actually revisiting now.
+- **No live Go↔Python wiring for sync** — `find_offset`'s output must currently be submitted by hand (or
+  a future tool) via `PUT .../clips/{clipID}/sync`; see "Multi-camera time sync" above.
+- **Placeholder sync confidence threshold** — `domain.MinSyncCorrelationScore` is structurally correct,
+  not measured; no document specifies a real tolerance.
+- **No real audio extraction from uploaded clips** — `ml-pipeline/time-sync` operates on already-decoded
+  sample arrays; extracting audio from an actual `.mp4` needs a dependency (ffmpeg/PyAV) not added here.

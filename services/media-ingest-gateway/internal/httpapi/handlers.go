@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -78,6 +79,29 @@ func (a *API) handleListClips(w http.ResponseWriter, r *http.Request) {
 		out[i] = toClipResponse(c)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSubmitSync stores an already-computed sync offset (from
+// ml-pipeline/time-sync's find_offset — see docs/adr/0006) against a
+// clip; this handler never computes the offset itself.
+func (a *API) handleSubmitSync(w http.ResponseWriter, r *http.Request) {
+	caller := callerFromContext(r.Context())
+	orgID := domain.OrganizationID(chi.URLParam(r, "orgID"))
+	matchID := domain.MatchID(chi.URLParam(r, "matchID"))
+	clipID := domain.ClipID(chi.URLParam(r, "clipID"))
+
+	var req submitSyncOffsetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	clip, err := a.svc.SubmitSyncOffset(r.Context(), caller, orgID, matchID, clipID, domain.ClipID(req.ReferenceClipID), req.OffsetMs, req.CorrelationScore)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toClipResponse(clip))
 }
 
 func (a *API) handleDownloadClip(w http.ResponseWriter, r *http.Request) {

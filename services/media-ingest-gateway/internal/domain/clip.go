@@ -21,6 +21,15 @@ type Clip struct {
 	SizeBytes   int64
 	UploadedAt  time.Time
 	UploadedBy  UserID
+	// Sync fields are nil until a caller submits a computed offset via
+	// ApplySyncOffset (sync.go) — most clips are never synced against
+	// another camera's footage, so these stay pointers rather than
+	// zero-valued fields that would be indistinguishable from "computed
+	// and found to be exactly zero."
+	SyncOffsetMs         *int64
+	SyncReferenceClipID  *ClipID
+	SyncCorrelationScore *float64
+	SyncedAt             *time.Time
 }
 
 func NewClip(id ClipID, orgID OrganizationID, matchID MatchID, cameraID CameraID, storageKey, contentHash string, sizeBytes int64, uploadedBy UserID, now time.Time) (Clip, error) {
