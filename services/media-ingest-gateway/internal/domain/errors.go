@@ -15,6 +15,7 @@ var (
 	ErrContentHashMismatch = errors.New("stored content hash does not match recorded hash")
 	ErrSyncSelfReference   = errors.New("a clip cannot be synced against itself")
 	ErrInvalidCorrelation  = errors.New("correlation score must be between -1.0 and 1.0")
+	ErrCameraNotRegistered = errors.New("camera is not registered with camera calibration service")
 	ErrInvalidRole         = errors.New("invalid role")
 	ErrPermissionDenied    = errors.New("permission denied")
 	ErrCrossTenantAccess   = errors.New("cross-tenant access denied")

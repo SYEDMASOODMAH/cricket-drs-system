@@ -16,14 +16,16 @@ type Service struct {
 	clips   ClipRepository
 	objects ObjectStore
 	tokens  TokenVerifier
+	cameras CameraRegistry
 	now     Clock
 }
 
-func New(clips ClipRepository, objects ObjectStore, tokens TokenVerifier) *Service {
+func New(clips ClipRepository, objects ObjectStore, tokens TokenVerifier, cameras CameraRegistry) *Service {
 	return &Service{
 		clips:   clips,
 		objects: objects,
 		tokens:  tokens,
+		cameras: cameras,
 		now:     time.Now,
 	}
 }

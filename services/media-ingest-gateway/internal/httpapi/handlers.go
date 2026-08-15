@@ -37,12 +37,13 @@ func (a *API) handleHealthz(w http.ResponseWriter, r *http.Request) {
 // the capturing camera's ID as a query parameter.
 func (a *API) handleUploadClip(w http.ResponseWriter, r *http.Request) {
 	caller := callerFromContext(r.Context())
+	token := bearerToken(r)
 	orgID := domain.OrganizationID(chi.URLParam(r, "orgID"))
 	matchID := domain.MatchID(chi.URLParam(r, "matchID"))
 	cameraID := domain.CameraID(r.URL.Query().Get("camera_id"))
 
 	defer func() { _ = r.Body.Close() }()
-	clip, err := a.svc.UploadClip(r.Context(), caller, orgID, matchID, cameraID, r.Body)
+	clip, err := a.svc.UploadClip(r.Context(), caller, token, orgID, matchID, cameraID, r.Body)
 	if err != nil {
 		writeServiceError(w, err)
 		return

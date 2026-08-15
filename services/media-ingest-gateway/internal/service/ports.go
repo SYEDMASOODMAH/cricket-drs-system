@@ -41,6 +41,16 @@ type TokenVerifier interface {
 	Verify(token string) (Claims, error)
 }
 
+// CameraRegistry confirms a camera_id is actually registered before an
+// upload from it is accepted — an HTTP adapter over Camera Calibration
+// Service (internal/cameracalibration), the registry docs/adr/0005 set up.
+// Same shape as match-tournament's ConsentChecker: token is forwarded
+// unchanged so the callee's own authorization decides visibility, not this
+// port.
+type CameraRegistry interface {
+	IsRegistered(ctx context.Context, token string, orgID domain.OrganizationID, cameraID domain.CameraID) (bool, error)
+}
+
 // Claims is what a verified token proves about its holder — minted by
 // Identity & Access, verified here (same as match-tournament).
 type Claims struct {

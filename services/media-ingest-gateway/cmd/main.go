@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	"github.com/cricketdrs/services/media-ingest-gateway/internal/cameracalibration"
 	"github.com/cricketdrs/services/media-ingest-gateway/internal/httpapi"
 	"github.com/cricketdrs/services/media-ingest-gateway/internal/memstore"
 	"github.com/cricketdrs/services/media-ingest-gateway/internal/objectstore"
@@ -37,6 +38,11 @@ func main() {
 		port = "8080"
 	}
 
+	cameraCalibrationURL := os.Getenv("CAMERA_CALIBRATION_URL")
+	if cameraCalibrationURL == "" {
+		cameraCalibrationURL = "http://localhost:8080"
+	}
+
 	obs, err := observability.New("media-ingest-gateway")
 	if err != nil {
 		slog.Error("media-ingest-gateway: failed to set up observability", "error", err)
@@ -57,6 +63,7 @@ func main() {
 		memstore.NewClipStore(),
 		buildObjectStore(),
 		security.NewJWTVerifier(jwtSigningKey()),
+		cameracalibration.NewClient(cameraCalibrationURL, obs.HTTPClientTransport(nil)),
 	)
 
 	api := httpapi.New(svc, obs)

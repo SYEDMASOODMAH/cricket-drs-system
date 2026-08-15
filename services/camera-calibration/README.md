@@ -59,13 +59,13 @@ service's PR.
 unset, in which case they share the same committed insecure dev-only fallback — see identity-access's
 README for why that fallback exists and what it's for).
 
-## No cross-service `CameraID` validation (yet)
+## Cross-service `CameraID` validation
 
-`media-ingest-gateway`'s `CameraID` type has been an opaque, unvalidated string since that service
-shipped, with a comment naming this exact registry as the reason. That registry now exists here, but the
-two services aren't wired together yet — same "trusted foreign reference" simplification already used
-for `matchID` there. Follow-up: media-ingest-gateway's clip-upload path should eventually validate
-`camera_id` against this service's `GET .../cameras/{cameraID}`.
+`media-ingest-gateway`'s clip-upload path (`internal/cameracalibration.Client`) calls this service's
+`GET .../cameras/{cameraID}` before accepting an upload, rejecting any `camera_id` that isn't registered
+here — closing the gap this section used to describe as outstanding. The registration endpoint itself
+didn't change: it was already org-scoped and already returned 404 for an unknown camera, which is exactly
+what that check relies on.
 
 ## Run locally
 
@@ -125,7 +125,6 @@ For the extrinsic-calibration algorithm's own tests (synthetic pitch-geometry fi
   (or a future venue-setup tool) via `PUT .../calibration`; see "Go owns registration/storage" above.
 - **Placeholder lens-distortion and validity-threshold numbers** — structurally correct, not measured;
   pending real Phase 0 field-validation data.
-- **No cross-service `CameraID` validation** against media-ingest-gateway — see that section above.
 - **JWT verification and the `Role` enum are duplicated a 4th time** — see "Shared auth" above.
 - **AI-assisted auto-calibration for ad-hoc setups** (`prd.md` Section 8) is explicitly Post-MVP, not
   attempted here.

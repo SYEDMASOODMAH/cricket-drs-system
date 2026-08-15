@@ -60,7 +60,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Clip"
         "400":
-          description: Invalid request (e.g. empty body, missing camera_id)
+          description: >
+            Invalid request (e.g. empty body, missing camera_id, or camera_id
+            is not registered with Camera Calibration Service)
         "403":
           description: Caller does not belong to orgID, or lacks manage_matches-equivalent permission
     get:

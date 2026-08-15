@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -31,6 +32,22 @@ func (f *fakeVerifier) Verify(token string) (service.Claims, error) {
 	return c, nil
 }
 
+// fakeCameraRegistry stands in for Camera Calibration Service. allowAll
+// registers every camera_id a test happens to make up, so tests unrelated
+// to this gate don't need to know about it — same shape as the service
+// package's own fakeCameraRegistry.
+type fakeCameraRegistry struct {
+	allowAll   bool
+	registered map[string]bool
+}
+
+func (f *fakeCameraRegistry) IsRegistered(_ context.Context, _ string, _ domain.OrganizationID, cameraID domain.CameraID) (bool, error) {
+	if f.allowAll {
+		return true, nil
+	}
+	return f.registered[string(cameraID)], nil
+}
+
 const (
 	orgAAdminToken  = "org-a-admin-token"
 	orgAPlayerToken = "org-a-player-token"
@@ -44,7 +61,30 @@ func newTestAPI(t *testing.T) http.Handler {
 		orgAPlayerToken: {UserID: "player-a", OrganizationID: "org-a", Role: domain.RolePlayer},
 		orgBAdminToken:  {UserID: "admin-b", OrganizationID: "org-b", Role: domain.RoleOrganizerAdmin},
 	}}
-	svc := service.New(memstore.NewClipStore(), objectstore.NewMemoryStore(), verifier)
+	svc := service.New(memstore.NewClipStore(), objectstore.NewMemoryStore(), verifier, &fakeCameraRegistry{allowAll: true})
+
+	obs, err := observability.New("media-ingest-gateway-test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return httpapi.New(svc, obs).Router()
+}
+
+// newTestAPIWithRegisteredCameras is newTestAPI but with a camera registry
+// that only accepts the given camera_ids — for tests exercising the
+// registration gate itself, which newTestAPI's allow-all fake bypasses.
+func newTestAPIWithRegisteredCameras(t *testing.T, registered ...string) http.Handler {
+	t.Helper()
+	verifier := &fakeVerifier{claims: map[string]service.Claims{
+		orgAAdminToken:  {UserID: "admin-a", OrganizationID: "org-a", Role: domain.RoleOrganizerAdmin},
+		orgAPlayerToken: {UserID: "player-a", OrganizationID: "org-a", Role: domain.RolePlayer},
+		orgBAdminToken:  {UserID: "admin-b", OrganizationID: "org-b", Role: domain.RoleOrganizerAdmin},
+	}}
+	registry := &fakeCameraRegistry{registered: map[string]bool{}}
+	for _, id := range registered {
+		registry.registered[id] = true
+	}
+	svc := service.New(memstore.NewClipStore(), objectstore.NewMemoryStore(), verifier, registry)
 
 	obs, err := observability.New("media-ingest-gateway-test")
 	if err != nil {
@@ -126,6 +166,22 @@ func TestUploadClip_EmptyContentReturns400(t *testing.T) {
 	rec := uploadClip(t, h, orgAAdminToken, "org-a", "match-1", "cam-1", nil)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadClip_UnregisteredCameraReturns400(t *testing.T) {
+	h := newTestAPIWithRegisteredCameras(t, "cam-1")
+	rec := uploadClip(t, h, orgAAdminToken, "org-a", "match-1", "cam-unregistered", []byte("video-bytes"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadClip_RegisteredCameraReturns201(t *testing.T) {
+	h := newTestAPIWithRegisteredCameras(t, "cam-1")
+	rec := uploadClip(t, h, orgAAdminToken, "org-a", "match-1", "cam-1", []byte("video-bytes"))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d, body %s", rec.Code, rec.Body.String())
 	}
 }
 

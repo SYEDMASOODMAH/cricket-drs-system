@@ -26,12 +26,20 @@ import (
 // production upload path (see the implementation plan's "explicitly
 // deferred" section — there's no edge-agent streaming client to receive
 // from yet).
-func (s *Service) UploadClip(ctx context.Context, caller Caller, orgID domain.OrganizationID, matchID domain.MatchID, cameraID domain.CameraID, content io.Reader) (domain.Clip, error) {
+func (s *Service) UploadClip(ctx context.Context, caller Caller, callerToken string, orgID domain.OrganizationID, matchID domain.MatchID, cameraID domain.CameraID, content io.Reader) (domain.Clip, error) {
 	if caller.OrganizationID != orgID {
 		return domain.Clip{}, domain.ErrCrossTenantAccess
 	}
 	if !domain.CanUploadClips(caller.Role) {
 		return domain.Clip{}, domain.ErrPermissionDenied
+	}
+
+	registered, err := s.cameras.IsRegistered(ctx, callerToken, orgID, cameraID)
+	if err != nil {
+		return domain.Clip{}, fmt.Errorf("service: check camera registration: %w", err)
+	}
+	if !registered {
+		return domain.Clip{}, domain.ErrCameraNotRegistered
 	}
 
 	data, err := io.ReadAll(content)

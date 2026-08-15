@@ -98,7 +98,7 @@ go run ./cmd
 | `BEARER_TOKEN` | *(required)* | An `organizer_admin` token — no distinct edge-device credential exists yet |
 | `ORG_ID` | *(required)* | |
 | `MATCH_ID` | *(required)* | |
-| `CAMERA_ID` | *(required)* | Opaque string; not cross-validated against Camera Calibration Service's registry yet |
+| `CAMERA_ID` | *(required)* | Must be registered with Camera Calibration Service — media-ingest-gateway now rejects uploads from an unregistered `camera_id` |
 | `BUFFER_SECONDS` | `20` | Rolling buffer window |
 | `PORT` | `9090` | edge-agent's own local HTTP server |
 
@@ -146,7 +146,6 @@ real backend, not a fake, was actually run.
   exist yet.
 - **No distinct edge-device credential** — uploads authenticate as a pre-obtained `organizer_admin` token,
   same status as Media Ingest Gateway's own documented deferred decision on this.
-- **No cross-validation of `CAMERA_ID`** against Camera Calibration Service's registry.
 - **Single camera, no device selection** — `capture.Open` uses whatever the OS considers the first UVC
   device; `capture.ListDevices()` logs what's available at startup for diagnostics, but there's no
   multi-camera selection logic yet (real accessible-tier deployments need 2-4 cameras).

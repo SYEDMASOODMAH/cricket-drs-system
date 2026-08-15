@@ -9,12 +9,11 @@ type OrganizationID string
 type UserID string
 type MatchID string
 
-// CameraID identifies a physical camera. The registry this was waiting on
-// now exists at services/camera-calibration (docs/adr/0005), but this
-// field is still just an opaque string supplied by the uploader — live
-// cross-validation against a registered camera record is a documented
-// follow-up, not wired in yet (same "trusted foreign reference"
-// simplification already used for MatchID above).
+// CameraID identifies a physical camera. Unlike MatchID above, this one IS
+// cross-validated: internal/service/clip.go's UploadClip calls
+// internal/cameracalibration.Client.IsRegistered against
+// services/camera-calibration (docs/adr/0005) before accepting an upload,
+// rejecting camera_id values that were never registered there.
 type CameraID string
 
 type ClipID string

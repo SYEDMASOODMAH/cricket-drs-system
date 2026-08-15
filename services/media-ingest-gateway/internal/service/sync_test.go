@@ -11,7 +11,7 @@ import (
 
 func uploadTestClip(t *testing.T, svc *Service, caller Caller, orgID domain.OrganizationID, matchID domain.MatchID, cameraID domain.CameraID, content string) domain.Clip {
 	t.Helper()
-	clip, err := svc.UploadClip(context.Background(), caller, orgID, matchID, cameraID, bytes.NewReader([]byte(content)))
+	clip, err := svc.UploadClip(context.Background(), caller, "test-token", orgID, matchID, cameraID, bytes.NewReader([]byte(content)))
 	if err != nil {
 		t.Fatalf("unexpected error uploading clip: %v", err)
 	}

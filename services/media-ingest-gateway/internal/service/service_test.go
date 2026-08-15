@@ -21,8 +21,29 @@ func (f *fakeTokenVerifier) Verify(_ string) (Claims, error) {
 	return f.claims, f.err
 }
 
+// fakeCameraRegistry lets service-layer tests exercise the camera
+// registration gate without a real Camera Calibration Service — same
+// pattern as match-tournament's fakeConsentChecker. allowAll makes it
+// register-everything by default, so tests unrelated to this gate don't
+// need to know about it.
+type fakeCameraRegistry struct {
+	allowAll   bool
+	registered map[domain.CameraID]bool
+	err        error
+}
+
+func (f *fakeCameraRegistry) IsRegistered(_ context.Context, _ string, _ domain.OrganizationID, cameraID domain.CameraID) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	if f.allowAll {
+		return true, nil
+	}
+	return f.registered[cameraID], nil
+}
+
 func newTestService() *Service {
-	return New(memstore.NewClipStore(), objectstore.NewMemoryStore(), &fakeTokenVerifier{})
+	return New(memstore.NewClipStore(), objectstore.NewMemoryStore(), &fakeTokenVerifier{}, &fakeCameraRegistry{allowAll: true})
 }
 
 var orgAAdmin = Caller{OrganizationID: "org-a", UserID: "admin-a", Role: domain.RoleOrganizerAdmin}
@@ -31,7 +52,7 @@ var orgAPlayer = Caller{OrganizationID: "org-a", UserID: "player-a", Role: domai
 
 func TestUploadClip_Success(t *testing.T) {
 	svc := newTestService()
-	clip, err := svc.UploadClip(context.Background(), orgAAdmin, "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
+	clip, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -42,7 +63,7 @@ func TestUploadClip_Success(t *testing.T) {
 
 func TestUploadClip_CrossTenantRejected(t *testing.T) {
 	svc := newTestService()
-	_, err := svc.UploadClip(context.Background(), orgAAdmin, "org-b", "match-1", "cam-1", bytes.NewReader([]byte("x")))
+	_, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-b", "match-1", "cam-1", bytes.NewReader([]byte("x")))
 	if !errors.Is(err, domain.ErrCrossTenantAccess) {
 		t.Fatalf("expected ErrCrossTenantAccess, got %v", err)
 	}
@@ -50,7 +71,7 @@ func TestUploadClip_CrossTenantRejected(t *testing.T) {
 
 func TestUploadClip_PermissionDenied(t *testing.T) {
 	svc := newTestService()
-	_, err := svc.UploadClip(context.Background(), orgAPlayer, "org-a", "match-1", "cam-1", bytes.NewReader([]byte("x")))
+	_, err := svc.UploadClip(context.Background(), orgAPlayer, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader([]byte("x")))
 	if !errors.Is(err, domain.ErrPermissionDenied) {
 		t.Fatalf("expected ErrPermissionDenied, got %v", err)
 	}
@@ -58,7 +79,7 @@ func TestUploadClip_PermissionDenied(t *testing.T) {
 
 func TestUploadClip_EmptyContentRejected(t *testing.T) {
 	svc := newTestService()
-	_, err := svc.UploadClip(context.Background(), orgAAdmin, "org-a", "match-1", "cam-1", bytes.NewReader(nil))
+	_, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader(nil))
 	if !errors.Is(err, domain.ErrEmptyContent) {
 		t.Fatalf("expected ErrEmptyContent, got %v", err)
 	}
@@ -66,7 +87,7 @@ func TestUploadClip_EmptyContentRejected(t *testing.T) {
 
 func TestGetClip_Success(t *testing.T) {
 	svc := newTestService()
-	uploaded, err := svc.UploadClip(context.Background(), orgAAdmin, "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
+	uploaded, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +103,7 @@ func TestGetClip_Success(t *testing.T) {
 
 func TestGetClip_CrossTenantRejected(t *testing.T) {
 	svc := newTestService()
-	uploaded, err := svc.UploadClip(context.Background(), orgAAdmin, "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
+	uploaded, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -95,10 +116,10 @@ func TestGetClip_CrossTenantRejected(t *testing.T) {
 
 func TestListClips_TenantIsolation(t *testing.T) {
 	svc := newTestService()
-	if _, err := svc.UploadClip(context.Background(), orgAAdmin, "org-a", "match-1", "cam-1", bytes.NewReader([]byte("a"))); err != nil {
+	if _, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader([]byte("a"))); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if _, err := svc.UploadClip(context.Background(), orgBAdmin, "org-b", "match-1", "cam-1", bytes.NewReader([]byte("b"))); err != nil {
+	if _, err := svc.UploadClip(context.Background(), orgBAdmin, "test-token", "org-b", "match-1", "cam-1", bytes.NewReader([]byte("b"))); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -121,7 +142,7 @@ func TestListClips_CrossTenantRejected(t *testing.T) {
 
 func TestDownloadClip_RoundTrip(t *testing.T) {
 	svc := newTestService()
-	uploaded, err := svc.UploadClip(context.Background(), orgAAdmin, "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
+	uploaded, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +166,7 @@ func TestDownloadClip_RoundTrip(t *testing.T) {
 
 func TestDownloadClip_CrossTenantRejected(t *testing.T) {
 	svc := newTestService()
-	uploaded, err := svc.UploadClip(context.Background(), orgAAdmin, "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
+	uploaded, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader([]byte("video-bytes")))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -164,9 +185,36 @@ func TestDownloadClip_NotFound(t *testing.T) {
 	}
 }
 
+func TestUploadClip_UnregisteredCameraRejected(t *testing.T) {
+	svc := New(memstore.NewClipStore(), objectstore.NewMemoryStore(), &fakeTokenVerifier{}, &fakeCameraRegistry{registered: map[domain.CameraID]bool{}})
+	_, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-unregistered", bytes.NewReader([]byte("x")))
+	if !errors.Is(err, domain.ErrCameraNotRegistered) {
+		t.Fatalf("expected ErrCameraNotRegistered, got %v", err)
+	}
+}
+
+func TestUploadClip_RegisteredCameraAccepted(t *testing.T) {
+	svc := New(memstore.NewClipStore(), objectstore.NewMemoryStore(), &fakeTokenVerifier{}, &fakeCameraRegistry{registered: map[domain.CameraID]bool{"cam-1": true}})
+	_, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader([]byte("x")))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUploadClip_CameraRegistryErrorPropagates(t *testing.T) {
+	svc := New(memstore.NewClipStore(), objectstore.NewMemoryStore(), &fakeTokenVerifier{}, &fakeCameraRegistry{err: errors.New("camera calibration unreachable")})
+	_, err := svc.UploadClip(context.Background(), orgAAdmin, "test-token", "org-a", "match-1", "cam-1", bytes.NewReader([]byte("x")))
+	if err == nil {
+		t.Fatal("expected an error when the camera registry check fails")
+	}
+	if errors.Is(err, domain.ErrCameraNotRegistered) {
+		t.Fatal("a registry lookup failure should propagate as its own error, not be conflated with ErrCameraNotRegistered")
+	}
+}
+
 func TestAuthenticate_Success(t *testing.T) {
 	claims := Claims{UserID: "user-1", OrganizationID: "org-a", Role: domain.RoleOrganizerAdmin}
-	svc := New(memstore.NewClipStore(), objectstore.NewMemoryStore(), &fakeTokenVerifier{claims: claims})
+	svc := New(memstore.NewClipStore(), objectstore.NewMemoryStore(), &fakeTokenVerifier{claims: claims}, &fakeCameraRegistry{allowAll: true})
 	caller, err := svc.Authenticate("some-token")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -177,7 +225,7 @@ func TestAuthenticate_Success(t *testing.T) {
 }
 
 func TestAuthenticate_InvalidTokenRejected(t *testing.T) {
-	svc := New(memstore.NewClipStore(), objectstore.NewMemoryStore(), &fakeTokenVerifier{err: errors.New("bad token")})
+	svc := New(memstore.NewClipStore(), objectstore.NewMemoryStore(), &fakeTokenVerifier{err: errors.New("bad token")}, &fakeCameraRegistry{allowAll: true})
 	_, err := svc.Authenticate("garbage")
 	if !errors.Is(err, domain.ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)

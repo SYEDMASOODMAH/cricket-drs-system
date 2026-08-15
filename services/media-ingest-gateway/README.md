@@ -38,6 +38,18 @@ synthetic audio fixtures rather than real camera footage. `Clip.SyncConfident()`
 document specifies a real one (`phases.md`'s Phase 2 completion criteria says only "within a defined
 tolerance," never a number).
 
+## Cross-service `CameraID` validation
+
+`UploadClip` calls `internal/cameracalibration.Client.IsRegistered` (an HTTP adapter over
+`services/camera-calibration`'s `GET /v1/organizations/{orgID}/cameras/{cameraID}`, mirroring
+match-tournament's `internal/identityaccess` consent-gate client) before accepting an upload — a
+`camera_id` that was never registered with Camera Calibration Service is rejected with `400 Bad Request`
+(`domain.ErrCameraNotRegistered`). The caller's own bearer token is forwarded unchanged, so Camera
+Calibration Service's own org/role authorization on that endpoint is the real gate, not this adapter.
+**This check is fail-closed**: if Camera Calibration Service is unreachable, the upload is rejected
+(`5xx`) rather than allowed through — the same precedent match-tournament's `AddPlayerToRoster` consent
+gate already established for this codebase.
+
 ## Object storage
 
 Two adapters behind the same `ObjectStore` port:
@@ -88,6 +100,7 @@ Health check: `GET http://localhost:8080/healthz`
 | `PORT` | `8080` | |
 | `JWT_SIGNING_KEY` | shared insecure dev-only key | Must match identity-access's and match-tournament's — see "Shared auth" above |
 | `S3_BUCKET` | *(unset — uses in-memory storage)* | If set, clips are stored in this S3 bucket instead of in-memory. Requires real AWS credentials to actually work (`config.LoadDefaultConfig`'s standard credential chain) |
+| `CAMERA_CALIBRATION_URL` | `http://localhost:8080` | Camera Calibration Service's base URL — see "Cross-service `CameraID` validation" above |
 
 ### Example walkthrough (assumes Identity & Access is running and you have a token — see its README)
 
@@ -133,7 +146,8 @@ is exercised directly in `internal/service` and `internal/httpapi`, same as the 
 - **Basic anti-tampering only** — authenticated uploads plus a server-computed SHA-256 hash, not full
   replay/liveness detection (a hard, real-footage-dependent problem).
 - **No cross-service `matchID` validation** against match-tournament — treated as an opaque, trusted
-  foreign reference for this Phase 2 "basic" slice.
+  foreign reference for this Phase 2 "basic" slice. (`camera_id` IS now cross-validated — see "Cross-service
+  `CameraID` validation" above.)
 - **JWT verification and the `Role` enum are duplicated a third time** — see "Shared auth" above; worth
   actually revisiting now.
 - **No live Go↔Python wiring for sync** — `find_offset`'s output must currently be submitted by hand (or
