@@ -21,15 +21,16 @@ confirmed, sustained-working configuration in this environment is 640x480@30.**
 
 ```
 internal/
-  capture/      wraps github.com/pion/mediadevices — Open() starts a UVC video stream, Read() returns
-                an owned buffer.Frame, Close() releases the device
-  buffer/       RingBuffer: thread-safe, time-window frame retention (Add/Snapshot)
+  capture/      wraps github.com/pion/mediadevices — Open()/OpenMicrophone() start UVC video/audio
+                streams, Read() returns an owned buffer.Frame/AudioChunk, Close() releases the device
+  buffer/       RingBuffer + AudioRingBuffer: thread-safe, time-window retention (Add/Snapshot)
   clipformat/   Encode/Decode — a simple length-prefixed JPEG-sequence container, not a real
                 video format (see "Known simplifications" below)
+  wav/          minimal hand-written WAV encoder — the audio export/interop format (see "Audio capture")
   uploader/     HTTP client posting encoded clips to Media Ingest Gateway's existing upload endpoint
   config/       env-var driven runtime configuration
-cmd/main.go     wires config → capture loop (goroutine feeding the ring buffer) → a tiny local HTTP
-                server (GET /healthz, POST /trigger)
+cmd/main.go     wires config → capture loops (goroutines feeding the ring buffers) → a tiny local HTTP
+                server (GET /healthz, POST /trigger, GET /audio-snapshot)
 ```
 
 Deliberately a separate Go module from `/services` — it ships to different hardware with a different
@@ -50,6 +51,30 @@ environment had `CGO_ENABLED=0` and no C compiler at all; getting this to build 
 MinGW-w64 (`winget install BrechtSanders.WinLibs.POSIX.UCRT`) — a real, if much smaller than `gocv`'s,
 native-toolchain requirement. The Linux driver (the actual production target) has no such requirement —
 it's pure Go.
+
+## Audio capture
+
+`internal/capture.OpenMicrophone` proves the other half of `docs/adr/0006`'s "Revisit if" clause: real
+audio capture now exists, and `ml-pipeline/time-sync`'s `find_offset` algorithm has been proven against
+it (a real captured sample, synthetically shifted by a known amount — see that package's
+`tests/test_real_audio.py`), not just synthetic Gaussian noise. `GET /audio-snapshot` exports the
+current audio buffer as a `.wav` download for inspection or feeding into a Python script — a local
+verification/export mechanism, deliberately separate from `/trigger`'s video-upload path since a live
+Go→Python correlation bridge remains a deferred decision (see "Known simplifications").
+
+Building this surfaced two real bugs, both found only by testing against the actual microphone:
+
+- **Stereo, not mono.** `OpenMicrophone` requests `ChannelCount=1` as an ideal constraint, but this
+  device delivers 2 channels regardless. `Microphone.Read` now averages all channels down to mono
+  unconditionally, so the rest of the pipeline (`AudioChunk`, `AudioRingBuffer`, the WAV export) can stay
+  simply mono — matching `find_offset`'s expected 1-D input — no matter what a given device actually
+  provides.
+- **Chunk timestamps from arrival time were wrong.** The microphone driver can deliver a backlog of
+  already-captured audio in a rapid burst, which — when each chunk was stamped with `time.Now()` at the
+  moment `Read()` happened to return — gave many chunks nearly-identical recent timestamps regardless of
+  when their audio was actually captured, defeating `AudioRingBuffer`'s time-window pruning (a 20s
+  window held 40s of real audio in initial testing). Fixed by deriving each chunk's timestamp from
+  `streamStart` plus its position in the audio timeline (cumulative samples / sample rate) instead.
 
 ## Run locally
 
@@ -77,14 +102,17 @@ go run ./cmd
 | `BUFFER_SECONDS` | `20` | Rolling buffer window |
 | `PORT` | `9090` | edge-agent's own local HTTP server |
 
-### Triggering a capture
+### Triggering a capture / exporting audio
 
 ```bash
+# Video: snapshots the current buffer, encodes it, and uploads it to Media Ingest Gateway — returns
+# the assigned clip ID and frame count. Stands in for the real review-trigger signal (see "Known
+# simplifications").
 curl -s -X POST "localhost:9090/trigger"
-```
 
-Snapshots the current buffer, encodes it, and uploads it to Media Ingest Gateway — returns the assigned
-clip ID and frame count. This stands in for the real review-trigger signal (see "Known simplifications").
+# Audio: downloads the current audio buffer as a .wav file.
+curl -s "localhost:9090/audio-snapshot" -o snapshot.wav
+```
 
 ## Test
 
@@ -92,11 +120,11 @@ clip ID and frame count. This stands in for the real review-trigger signal (see 
 go test ./... -cover
 ```
 
-`buffer`, `clipformat`, and `uploader` are pure/network-mockable and are unit-tested normally (79-100%
-coverage). `capture` wraps real hardware I/O and isn't meaningfully unit-testable the way the others are
-— it was instead exercised for real against the DJI Action 5 Pro during manual verification (see the
-implementation plan), the first time this session a component's real backend, not a fake, was actually
-run.
+`buffer`, `clipformat`, `wav`, and `uploader` are pure/network-mockable and are unit-tested normally
+(79-100% coverage). `capture` wraps real hardware I/O and isn't meaningfully unit-testable the way the
+others are — both the camera and microphone were instead exercised for real against the DJI Action 5
+Pro during manual verification (see the implementation plan), the first components this session whose
+real backend, not a fake, was actually run.
 
 ## Known simplifications (tracked, not accidental)
 
@@ -110,8 +138,10 @@ run.
 - **Custom JPEG-sequence container, not H.264/mp4** — `internal/clipformat` proves the capture → buffer →
   upload → storage → retrieval mechanism round-trips real frame content correctly; it is not a playable
   production video format.
-- **Video only — no audio capture yet.** `pion/mediadevices` supports microphones too; wiring that up and
-  feeding it into `ml-pipeline/time-sync` is separate future work.
+- **No live Go→Python correlation bridge.** Audio is exported as `.wav` for local verification/scripting;
+  `docs/adr/0006`'s deferred decision (HTTP-wrapped `find_offset`, or an async job) remains deferred —
+  this proves the algorithm against real signal characteristics, it doesn't wire production
+  capture→correlate→submit end-to-end.
 - **Manual HTTP trigger (`POST /trigger`), not a real review-orchestration signal** — that service doesn't
   exist yet.
 - **No distinct edge-device credential** — uploads authenticate as a pre-obtained `organizer_admin` token,
@@ -120,3 +150,6 @@ run.
 - **Single camera, no device selection** — `capture.Open` uses whatever the OS considers the first UVC
   device; `capture.ListDevices()` logs what's available at startup for diagnostics, but there's no
   multi-camera selection logic yet (real accessible-tier deployments need 2-4 cameras).
+- **Microphone failure is non-fatal but silent about which mic it picked** — `OpenMicrophone` has no
+  label-based selection the way `Open` does for video; on a machine with multiple audio input devices,
+  which one gets used is automatic, same caveat as video's device selection above.

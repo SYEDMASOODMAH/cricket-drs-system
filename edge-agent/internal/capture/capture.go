@@ -17,12 +17,16 @@ import (
 	"time"
 
 	"github.com/pion/mediadevices"
+	"github.com/pion/mediadevices/pkg/io/audio"
 	"github.com/pion/mediadevices/pkg/io/video"
 	"github.com/pion/mediadevices/pkg/prop"
+	"github.com/pion/mediadevices/pkg/wave"
 
-	// Registers the platform camera driver as a side effect — required by
-	// mediadevices' design (there is no default media input registered).
+	// Registers the platform camera and microphone drivers as a side
+	// effect — required by mediadevices' design (there is no default
+	// media input registered).
 	_ "github.com/pion/mediadevices/pkg/driver/camera"
+	_ "github.com/pion/mediadevices/pkg/driver/microphone"
 
 	"github.com/cricketdrs/edge-agent/internal/buffer"
 )
@@ -122,6 +126,106 @@ func cloneImage(src image.Image) image.Image {
 	dst := image.NewRGBA(bounds)
 	draw.Draw(dst, bounds, src, bounds.Min, draw.Src)
 	return dst
+}
+
+// Microphone is an open handle to one audio source.
+type Microphone struct {
+	track  *mediadevices.AudioTrack
+	reader audio.Reader
+
+	// streamStart and samplesRead reconstruct each chunk's true capture
+	// time from its position in the audio timeline, rather than trusting
+	// time.Now() at the moment Read() happens to return — see Read's doc
+	// comment for why that distinction turned out to matter in practice.
+	streamStart time.Time
+	samplesRead int64
+}
+
+// OpenMicrophone starts capturing mono audio from a microphone, at
+// sampleRate as an ideal (not exact) constraint — same reasoning as
+// Open's resolution/frame-rate constraints (docs/adr/0007's Windows
+// sustained-capture lesson: exact constraints on this driver fail more
+// often than they should). Unlike Open, no sample format (bit depth,
+// float vs int, interleaving) is constrained at all — Read handles
+// whatever format the driver actually returns via
+// wave.Int16SampleFormat.Convert, so there's nothing to get wrong by
+// asking for a format the device doesn't have.
+func OpenMicrophone(sampleRate int) (*Microphone, error) {
+	stream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
+		Audio: func(c *mediadevices.MediaTrackConstraints) {
+			c.ChannelCount = prop.Int(1)
+			c.SampleRate = prop.Int(sampleRate)
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("capture: open microphone: %w", err)
+	}
+
+	tracks := stream.GetAudioTracks()
+	if len(tracks) == 0 {
+		return nil, fmt.Errorf("capture: microphone opened but produced no audio track")
+	}
+	track, ok := tracks[0].(*mediadevices.AudioTrack)
+	if !ok {
+		return nil, fmt.Errorf("capture: unexpected audio track type %T", tracks[0])
+	}
+
+	reader := track.NewReader(true)
+
+	return &Microphone{track: track, reader: reader, streamStart: time.Now()}, nil
+}
+
+// Read blocks until the next audio chunk is available and returns it as
+// an owned, mono buffer.AudioChunk, converting whatever sample format
+// the driver actually returned to signed 16-bit PCM via the wave
+// package's own conversion (wave.Int16SampleFormat.Convert) — the same
+// conversion its Int16Interleaved type uses internally, rather than a
+// hand-rolled one that could get the scaling wrong.
+//
+// Channels are averaged down to mono regardless of how many the device
+// actually delivers. OpenMicrophone requests ChannelCount=1 as an ideal,
+// not exact, constraint (same reasoning as Open's resolution/frame-rate
+// constraints), and found by testing against the real microphone: this
+// device delivers 2 channels regardless. The rest of this package
+// (AudioChunk, AudioRingBuffer, the WAV export in cmd/main.go) is all
+// designed around mono audio — matching find_offset's expected 1-D
+// input — so downmixing here, once, keeps that assumption true no matter
+// what the hardware actually provides, rather than threading a channel
+// count through every consumer.
+//
+// CapturedAt is derived from streamStart plus this chunk's position in
+// the audio timeline (cumulative frames read / sample rate) — not
+// time.Now() at the moment Read() returns, so a driver that delivers a
+// backlog of already-captured audio in a rapid burst doesn't stamp
+// genuinely old audio with near-identical recent timestamps and defeat
+// buffer.AudioRingBuffer's time-window pruning.
+func (m *Microphone) Read() (buffer.AudioChunk, error) {
+	chunk, release, err := m.reader.Read()
+	if err != nil {
+		return buffer.AudioChunk{}, fmt.Errorf("capture: read audio chunk: %w", err)
+	}
+
+	info := chunk.ChunkInfo()
+	samples := make([]int16, info.Len)
+	for i := 0; i < info.Len; i++ {
+		var sum int32
+		for ch := 0; ch < info.Channels; ch++ {
+			s := wave.Int16SampleFormat.Convert(chunk.At(i, ch)).(wave.Int16Sample)
+			sum += int32(s)
+		}
+		samples[i] = int16(sum / int32(info.Channels))
+	}
+	release()
+
+	capturedAt := m.streamStart.Add(time.Duration(float64(m.samplesRead) / float64(info.SamplingRate) * float64(time.Second)))
+	m.samplesRead += int64(info.Len)
+
+	return buffer.AudioChunk{Samples: samples, SampleRate: info.SamplingRate, CapturedAt: capturedAt}, nil
+}
+
+// Close releases the microphone device.
+func (m *Microphone) Close() error {
+	return m.track.Close()
 }
 
 // DeviceInfo is one enumerated video input device.

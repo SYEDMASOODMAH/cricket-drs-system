@@ -17,6 +17,13 @@ decode dependency (ffmpeg/PyAV) this package doesn't declare. `find_offset` oper
 1-D sample arrays; producing those from a real `.mp4` is deferred, same as
 `ml-pipeline/camera-calibration` defers real checkerboard/pitch photography.
 
+**`find_offset` is proven against real audio, not just synthetic noise.** `tests/fixtures/real_sample.wav`
+is a short clip trimmed from a real capture against the DJI Action 5 Pro's microphone
+(`edge-agent/internal/capture.OpenMicrophone`) — `tests/test_real_audio.py` shifts it by a known amount
+and confirms `find_offset` recovers that shift, the same technique the synthetic tests use but applied
+to genuine signal content (transients, correlated harmonics, silence gaps) instead of Gaussian noise.
+See `docs/adr/0006`'s "Revisit if" clause, which named this exact moment.
+
 ## No live caller yet
 
 Pure, directly-tested function library — no FastAPI server, matching every other still-unwired
@@ -31,11 +38,13 @@ cd ml-pipeline
 pytest time-sync/tests -v --cov=time_sync
 ```
 
-The tests project a known reference signal through a deliberately chosen shift (with and without added
-noise) to build a synthetic "second camera" track with a known ground-truth offset, then check
-`find_offset` recovers it — plus sanity checks that two genuinely unrelated signals score low and a
-self-correlation is exactly zero-offset/maximum-confidence. This is `docs/phases.md`'s Phase 2 testing
-intent — validating sync accuracy — exercised without any real camera, venue, or audio file.
+`test_audio_correlation.py` projects a known reference signal through a deliberately chosen shift (with
+and without added noise) to build a synthetic "second camera" track with a known ground-truth offset,
+then checks `find_offset` recovers it — plus sanity checks that two genuinely unrelated signals score low
+and a self-correlation is exactly zero-offset/maximum-confidence. `test_real_audio.py` does the same
+shift-and-recover check against the real captured fixture instead. Together this is `docs/phases.md`'s
+Phase 2 testing intent — validating sync accuracy — exercised without any real venue or multi-camera
+match.
 
 ## Setup
 
