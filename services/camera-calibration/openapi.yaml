@@ -1,0 +1,269 @@
+openapi: 3.0.3
+info:
+  title: camera-calibration
+  version: 0.1.0
+  description: >
+    Camera/venue registration and calibration-profile storage (Phase 2,
+    second slice — docs/phases.md). Per rules.md Section 2.3, this file
+    must stay in sync with the implementation; CI fails the build on drift
+    once endpoints exist.
+
+    The actual extrinsic-pose computation runs externally in
+    ml-pipeline/camera-calibration (see docs/adr/0005) — this service
+    stores and evaluates already-computed calibration values, it does not
+    compute them.
+paths:
+  /healthz:
+    get:
+      summary: Liveness check
+      responses:
+        "200":
+          description: OK
+
+  /v1/organizations/{orgID}/cameras:
+    post:
+      summary: Register a physical camera to a venue
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [venue_id, model]
+              properties:
+                venue_id:
+                  type: string
+                model:
+                  type: string
+                  description: Camera hardware model (e.g. "GoPro Hero 12 Black") — used to look up its standardized intrinsic lens profile.
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Camera"
+        "400":
+          description: Invalid request (e.g. empty venue_id or model)
+        "403":
+          description: Caller does not belong to orgID, or lacks organizer_admin
+    get:
+      summary: List cameras registered to an organization
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Camera"
+
+  /v1/organizations/{orgID}/cameras/{cameraID}:
+    get:
+      summary: Fetch a camera's registration
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/CameraID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Camera"
+        "404":
+          description: Camera not found
+
+  /v1/organizations/{orgID}/cameras/{cameraID}/calibration:
+    put:
+      summary: Submit a camera's extrinsic calibration profile
+      description: >
+        Rotation and translation are already-computed values (see
+        ml-pipeline/camera-calibration's solve_pose, docs/adr/0005) — this
+        endpoint stores and evaluates them, it does not run the pose
+        computation itself. A new submission replaces any previous profile
+        for this camera.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/CameraID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rotation, translation, reprojection_error_px]
+              properties:
+                rotation:
+                  type: array
+                  items:
+                    type: number
+                  minItems: 3
+                  maxItems: 3
+                  description: Rodrigues rotation vector (OpenCV convention).
+                translation:
+                  type: array
+                  items:
+                    type: number
+                  minItems: 3
+                  maxItems: 3
+                reprojection_error_px:
+                  type: number
+                  description: Mean reprojection error in pixels — the calibration accuracy metric.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalibrationProfile"
+        "400":
+          description: Invalid calibration data (e.g. negative reprojection error)
+        "403":
+          description: Caller does not belong to orgID, or lacks organizer_admin
+        "404":
+          description: Camera not registered
+    get:
+      summary: Get a camera's current calibration status
+      description: >
+        The `valid` field is the "pre-match camera detection and
+        calibration/health check" prd.md Section 5.4 describes — true if
+        reprojection_error_px is within the accepted threshold.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/CameraID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalibrationProfile"
+        "404":
+          description: No calibration profile submitted for this camera yet
+
+  /v1/camera-models/{model}/lens-profile:
+    get:
+      summary: Look up a camera model's standardized intrinsic (lens-distortion) profile
+      description: >
+        Not tenant-scoped — a model's lens profile is reference data
+        (architecture.md Section 9: "built once per supported camera
+        model, not re-derived per unit"), so any authenticated caller may
+        read it, regardless of organization or role.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: model
+          in: path
+          required: true
+          schema:
+            type: string
+          description: URL-encoded camera model name, e.g. "GoPro%20Hero%2012%20Black".
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LensProfile"
+        "404":
+          description: No lens profile registered for this camera model
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Tokens are issued by Identity & Access and verified here — this
+        service holds no login/token-issuance endpoint of its own.
+
+  parameters:
+    OrgID:
+      name: orgID
+      in: path
+      required: true
+      schema:
+        type: string
+    CameraID:
+      name: cameraID
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    Camera:
+      type: object
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        venue_id:
+          type: string
+        model:
+          type: string
+        registered_at:
+          type: string
+          format: date-time
+        registered_by:
+          type: string
+    CalibrationProfile:
+      type: object
+      properties:
+        camera_id:
+          type: string
+        organization_id:
+          type: string
+        rotation:
+          type: array
+          items:
+            type: number
+        translation:
+          type: array
+          items:
+            type: number
+        reprojection_error_px:
+          type: number
+        valid:
+          type: boolean
+        calibrated_at:
+          type: string
+          format: date-time
+        calibrated_by:
+          type: string
+    LensProfile:
+      type: object
+      properties:
+        model:
+          type: string
+        focal_length_px_x:
+          type: number
+        focal_length_px_y:
+          type: number
+        principal_point_px_x:
+          type: number
+        principal_point_px_y:
+          type: number
+        distortion_coeffs:
+          type: array
+          items:
+            type: number
+          description: OpenCV 5-element (k1, k2, p1, p2, k3) plumb-bob distortion model.
