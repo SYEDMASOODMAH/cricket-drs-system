@@ -1,6 +1,8 @@
 # ADR-0003: Platform-provided GoPro kit (USB-C tethered) as accessible-tier hardware
 
-**Status:** Accepted
+**Status:** Superseded by `docs/adr/0007-dji-action5-hardware.md` for the specific vendor (GoPro → DJI
+Action 5 Pro) and accepted frame rate (120fps+ target → 1080p30 actual, for now). The USB-C tethered,
+webcam-mode-primary/HDMI-fallback **architecture** decided below is unchanged and still in effect.
 **Date:** 2026-07-18
 
 ## Context

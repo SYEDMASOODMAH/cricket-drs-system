@@ -17,7 +17,14 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
     "mypy>=1.9",
-    "ruff>=0.4",
+    # Pinned exactly, not >=: CI installs fresh on every run with no
+    # lockfile, and an open-ended constraint let it silently resolve a
+    # newer ruff (0.16.3) than any local dev venv had tested against,
+    # which enabled stricter defaults (RUF022 __all__ sorting, I001
+    # import-block formatting) and broke CI on code that passed locally
+    # under ruff 0.15.22. Bump deliberately, verifying clean locally
+    # first, not by drift.
+    "ruff==0.16.3",
 ]
 
 [tool.ruff]

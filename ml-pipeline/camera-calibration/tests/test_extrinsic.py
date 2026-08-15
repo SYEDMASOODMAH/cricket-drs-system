@@ -14,7 +14,6 @@ from __future__ import annotations
 import cv2
 import numpy as np
 import pytest
-
 from camera_calibration.extrinsic import CameraIntrinsics, solve_pose
 from camera_calibration.pitch_geometry import reference_points_array
 
