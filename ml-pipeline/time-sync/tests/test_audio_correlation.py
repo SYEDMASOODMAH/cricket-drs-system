@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from time_sync.audio_correlation import find_offset
 
 SAMPLE_RATE = 8000
