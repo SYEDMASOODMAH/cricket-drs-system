@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	defaultBufferSeconds = 20
-	defaultPort          = "9090"
+	defaultBufferSeconds   = 20
+	defaultPort            = "9090"
+	defaultUploadTransport = "http"
 )
 
 // Config holds everything cmd/main.go needs to wire the capture loop,
@@ -47,6 +48,11 @@ type Config struct {
 	// Port is what edge-agent's own local HTTP server (healthz +
 	// trigger) listens on.
 	Port string
+	// UploadTransport selects how handleTrigger pushes an encoded clip to
+	// GatewayURL: "http" (internal/uploader, a plain authenticated POST)
+	// or "webrtc" (internal/webrtcupload, docs/adr/0009). Defaults to
+	// "http" so existing behavior is unchanged unless explicitly opted in.
+	UploadTransport string
 }
 
 // Load reads configuration from the environment. GATEWAY_URL,
@@ -88,6 +94,14 @@ func Load() (Config, error) {
 
 	if raw := os.Getenv("PORT"); raw != "" {
 		cfg.Port = raw
+	}
+
+	cfg.UploadTransport = defaultUploadTransport
+	if raw := os.Getenv("UPLOAD_TRANSPORT"); raw != "" {
+		if raw != "http" && raw != "webrtc" {
+			return Config{}, fmt.Errorf("config: UPLOAD_TRANSPORT must be %q or %q, got %q", "http", "webrtc", raw)
+		}
+		cfg.UploadTransport = raw
 	}
 
 	return cfg, nil

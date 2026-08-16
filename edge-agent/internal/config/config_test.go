@@ -27,6 +27,9 @@ func TestLoad_DefaultsApplied(t *testing.T) {
 	if cfg.Port != "9090" {
 		t.Errorf("expected default port 9090, got %q", cfg.Port)
 	}
+	if cfg.UploadTransport != "http" {
+		t.Errorf("expected default upload transport http, got %q", cfg.UploadTransport)
+	}
 }
 
 func TestLoad_OverridesRespected(t *testing.T) {
@@ -43,6 +46,28 @@ func TestLoad_OverridesRespected(t *testing.T) {
 	}
 	if cfg.Port != "9999" {
 		t.Errorf("expected port 9999, got %q", cfg.Port)
+	}
+}
+
+func TestLoad_UploadTransportWebRTCAccepted(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("UPLOAD_TRANSPORT", "webrtc")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.UploadTransport != "webrtc" {
+		t.Errorf("expected upload transport webrtc, got %q", cfg.UploadTransport)
+	}
+}
+
+func TestLoad_InvalidUploadTransportRejected(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("UPLOAD_TRANSPORT", "carrier-pigeon")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected an error for an unrecognized UPLOAD_TRANSPORT")
 	}
 }
 

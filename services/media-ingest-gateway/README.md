@@ -1,9 +1,9 @@
 # media-ingest-gateway
 
-**Status:** Phase 2 slices implemented — accepts uploaded match video clips, stores them, and stores
-multi-camera time-sync offsets computed against them. See `/docs/architecture.md` Section 5 for this
-service's overall responsibilities and `/docs/phases.md` Phase 2 for what's still ahead (the edge-agent's
-actual camera capture, SRT/WebRTC transport).
+**Status:** Phase 2 slices implemented — accepts uploaded match video clips (over plain HTTP or WebRTC),
+stores them, and stores multi-camera time-sync offsets computed against them. See `/docs/architecture.md`
+Section 5 for this service's overall responsibilities and `/docs/phases.md` Phase 2 for what's still
+ahead (SRT specifically remains unbuilt — see `docs/adr/0009`).
 
 ## Architecture
 
@@ -23,7 +23,8 @@ internal/
                     and s3.go (real AWS SDK v2, unit-tested against a fake — see "Object storage" below)
   security/         JWT *verify-only* adapter — this service never issues tokens, only validates
                     ones Identity & Access minted (see "Shared auth" below)
-  httpapi/          chi router + handlers
+  httpapi/          chi router + handlers, including the WebRTC signaling endpoint (see "Upload
+                    transport" below)
 ```
 
 ## Multi-camera time sync
@@ -49,6 +50,21 @@ Calibration Service's own org/role authorization on that endpoint is the real ga
 **This check is fail-closed**: if Camera Calibration Service is unreachable, the upload is rejected
 (`5xx`) rather than allowed through — the same precedent match-tournament's `AddPlayerToRoster` consent
 gate already established for this codebase.
+
+## Upload transport
+
+Two ways to get a clip's bytes into `UploadClip` — both call the exact same service method, just
+delivering the bytes differently:
+
+- **Plain HTTP** (`POST /v1/organizations/{orgID}/matches/{matchID}/clips`) — the original path, raw
+  bytes as the request body.
+- **WebRTC** (`POST /v1/organizations/{orgID}/matches/{matchID}/clips/webrtc-offer`, `docs/adr/0009`) —
+  edge-agent's alternative transport for the leg `architecture.md` Section 10 covers. Signaling is this
+  one HTTP round-trip (decode the client's SDP offer, answer it); the clip bytes then arrive over an
+  ICE-negotiated data channel (`internal/httpapi/webrtc.go`), get handed to `UploadClip` once the
+  declared `size` query param's worth of bytes has arrived, and the result is acked back over the same
+  channel. Chosen over SRT because `pion/webrtc` needs no cgo/native toolchain — see the ADR for the
+  full reasoning and the explicit deviation from architecture.md's stated SRT preference.
 
 ## Object storage
 
@@ -137,9 +153,10 @@ is exercised directly in `internal/service` and `internal/httpapi`, same as the 
 
 ## Known Phase 2 simplifications (tracked, not accidental)
 
-- **Plain HTTP upload, not SRT/WebRTC** — `architecture.md` Section 10 specifies SRT/WebRTC for the real
-  venue-to-cloud leg; there's no edge-agent streaming client to talk to yet, so a straightforward
-  authenticated upload endpoint is what's actually being tested now.
+- **SRT still not built** — WebRTC is the only new transport added (see "Upload transport" above and
+  `docs/adr/0009`), a deliberate deviation from architecture.md's stated SRT preference for this leg.
+- **No STUN/TURN for the WebRTC path** — host ICE candidates only; real NAT traversal for actual venue
+  deployments is a separate, later decision.
 - **Whole clip buffered in memory during upload**, not true streaming — keeps the upload logic simple
   and correct (no partial-write cleanup to worry about) at the cost of memory use proportional to clip
   size. Not yet a real production upload path either way.

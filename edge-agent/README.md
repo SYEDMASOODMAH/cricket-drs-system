@@ -28,6 +28,7 @@ internal/
                 video format (see "Known simplifications" below)
   wav/          minimal hand-written WAV encoder — the audio export/interop format (see "Audio capture")
   uploader/     HTTP client posting encoded clips to Media Ingest Gateway's existing upload endpoint
+  webrtcupload/ WebRTC data-channel client, an alternative transport to uploader/ (see "Upload transport")
   config/       env-var driven runtime configuration
 cmd/main.go     wires config → capture loops (goroutines feeding the ring buffers) → a tiny local HTTP
                 server (GET /healthz, POST /trigger, GET /audio-snapshot)
@@ -76,6 +77,24 @@ Building this surfaced two real bugs, both found only by testing against the act
   window held 40s of real audio in initial testing). Fixed by deriving each chunk's timestamp from
   `streamStart` plus its position in the audio timeline (cumulative samples / sample rate) instead.
 
+## Upload transport
+
+`handleTrigger` pushes the encoded clip through whichever `Uploader` `cmd/main.go` wired up
+(`UPLOAD_TRANSPORT`, see the config table below):
+
+- **`http`** (`internal/uploader`, the default) — a plain authenticated `POST` of the whole clip.
+- **`webrtc`** (`internal/webrtcupload`, `docs/adr/0009`) — `docs/architecture.md` Section 10's WebRTC
+  option for this leg. Signaling is a single HTTP round-trip (an SDP offer/answer exchange against Media
+  Ingest Gateway's `POST .../clips/webrtc-offer`); the clip bytes then flow directly between the two
+  processes over an ICE-negotiated, ordered/reliable data channel, chunked and acked once the server has
+  fully stored the clip. Chosen over SRT because `pion/webrtc` was already a transitive dependency (pure
+  Go, no new native toolchain — unlike a real SRT implementation, which needs either `libsrt` via cgo or
+  an unverified pure-Go library) — see the ADR for the full reasoning, including the explicit deviation
+  from architecture.md's stated *preference* for SRT.
+
+Both implement the same small `Upload(ctx, token, orgID, matchID, cameraID, clipBytes) (string, error)`
+contract, so `handleTrigger` itself doesn't change based on which is active.
+
 ## Run locally
 
 Requires a UVC camera connected in Webcam Mode, and `media-ingest-gateway` running (see its README for a
@@ -101,6 +120,7 @@ go run ./cmd
 | `CAMERA_ID` | *(required)* | Must be registered with Camera Calibration Service — media-ingest-gateway now rejects uploads from an unregistered `camera_id` |
 | `BUFFER_SECONDS` | `20` | Rolling buffer window |
 | `PORT` | `9090` | edge-agent's own local HTTP server |
+| `UPLOAD_TRANSPORT` | `http` | `http` or `webrtc` — see "Upload transport" above |
 
 ### Triggering a capture / exporting audio
 
@@ -121,10 +141,13 @@ go test ./... -cover
 ```
 
 `buffer`, `clipformat`, `wav`, and `uploader` are pure/network-mockable and are unit-tested normally
-(79-100% coverage). `capture` wraps real hardware I/O and isn't meaningfully unit-testable the way the
-others are — both the camera and microphone were instead exercised for real against the DJI Action 5
-Pro during manual verification (see the implementation plan), the first components this session whose
-real backend, not a fake, was actually run.
+(79-100% coverage). `webrtcupload` is tested against a real (if loopback) `pion/webrtc` peer connection
+and data channel — not a mock of the transport — proving the chunk-send/ack/close sequence actually
+works over real WebRTC (~79% coverage; the uncovered lines are timeout paths that would need real
+multi-second waits to trigger deterministically). `capture` wraps real hardware I/O and isn't
+meaningfully unit-testable the way the others are — both the camera and microphone were instead
+exercised for real against the DJI Action 5 Pro during manual verification (see the implementation
+plan), the first components this session whose real backend, not a fake, was actually run.
 
 ## Known simplifications (tracked, not accidental)
 
@@ -152,3 +175,10 @@ real backend, not a fake, was actually run.
 - **Microphone failure is non-fatal but silent about which mic it picked** — `OpenMicrophone` has no
   label-based selection the way `Open` does for video; on a machine with multiple audio input devices,
   which one gets used is automatic, same caveat as video's device selection above.
+- **No STUN/TURN for the WebRTC transport** — `internal/webrtcupload` uses host ICE candidates only,
+  sufficient for localhost/same-LAN testing; real NAT traversal for actual venue deployments is a
+  separate, later decision (`docs/adr/0009`).
+- **SRT itself is not built** — WebRTC is the only new transport this slice adds, a deliberate deviation
+  from architecture.md's stated SRT preference (`docs/adr/0009`).
+- **No automatic transport fallback** — `UPLOAD_TRANSPORT` is a static operator choice, not a runtime
+  negotiation between HTTP and WebRTC.

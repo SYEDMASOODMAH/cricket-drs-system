@@ -8,10 +8,10 @@ info:
     in sync with the implementation; CI fails the build on drift once
     endpoints exist.
 
-    Transport note: real venue-to-cloud transport is SRT/WebRTC per
-    architecture.md Section 10; this is a plain authenticated HTTP upload
-    for now since there's no edge-agent streaming client to receive from
-    yet — see this service's README.
+    Transport note: architecture.md Section 10 names SRT (preferred) or
+    WebRTC for the real venue-to-cloud leg. Plain HTTP upload
+    (POST .../clips) and WebRTC (POST .../clips/webrtc-offer, docs/adr/0009)
+    are both implemented; SRT is not — see this service's README.
 
     Sync note: this service stores multi-camera time-sync offsets
     (architecture.md Section 5 assigns "time-synchronizes multi-camera
@@ -81,6 +81,53 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Clip"
+
+  /v1/organizations/{orgID}/matches/{matchID}/clips/webrtc-offer:
+    post:
+      summary: Signal a WebRTC upload of a video clip (docs/adr/0009)
+      description: >
+        Alternative to POST .../clips: signaling for a WebRTC data-channel
+        upload. Request body is an SDP offer; the response is an SDP
+        answer. Once connected, the client sends the clip's bytes over the
+        negotiated data channel — size bytes total, chunked however the
+        client likes — and the server acks back {"clip_id": "..."} (or
+        {"error": "..."}) on that same channel once it has stored the clip
+        via the identical path POST .../clips uses. See edge-agent's
+        internal/webrtcupload for the reference client implementation.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
+        - $ref: "#/components/parameters/MatchID"
+        - name: camera_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: size
+          in: query
+          required: true
+          description: Total byte length of the clip the client will send over the data channel.
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionDescription"
+      responses:
+        "200":
+          description: OK — SDP answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionDescription"
+        "400":
+          description: Invalid request (missing/invalid size, or a malformed SDP offer)
+        "403":
+          description: Caller does not belong to orgID, or lacks manage_matches-equivalent permission
 
   /v1/organizations/{orgID}/matches/{matchID}/clips/{clipID}:
     get:
@@ -198,6 +245,16 @@ components:
         type: string
 
   schemas:
+    SessionDescription:
+      type: object
+      description: A WebRTC SDP offer or answer (pion/webrtc's SessionDescription wire format).
+      properties:
+        type:
+          type: string
+          enum: [offer, answer]
+        sdp:
+          type: string
+      required: [type, sdp]
     Clip:
       type: object
       properties:

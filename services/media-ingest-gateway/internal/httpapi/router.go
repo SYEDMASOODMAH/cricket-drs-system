@@ -29,6 +29,7 @@ func (a *API) Router() http.Handler {
 		r.Use(requireAuth(a.svc))
 
 		r.Post("/v1/organizations/{orgID}/matches/{matchID}/clips", a.handleUploadClip)
+		r.Post("/v1/organizations/{orgID}/matches/{matchID}/clips/webrtc-offer", a.handleWebRTCOffer)
 		r.Get("/v1/organizations/{orgID}/matches/{matchID}/clips", a.handleListClips)
 		r.Get("/v1/organizations/{orgID}/matches/{matchID}/clips/{clipID}", a.handleGetClip)
 		r.Get("/v1/organizations/{orgID}/matches/{matchID}/clips/{clipID}/download", a.handleDownloadClip)

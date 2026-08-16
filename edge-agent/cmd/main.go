@@ -22,7 +22,17 @@ import (
 	"github.com/cricketdrs/edge-agent/internal/config"
 	"github.com/cricketdrs/edge-agent/internal/uploader"
 	"github.com/cricketdrs/edge-agent/internal/wav"
+	"github.com/cricketdrs/edge-agent/internal/webrtcupload"
 )
+
+// Uploader is the transport-agnostic contract handleTrigger pushes an
+// encoded clip through — internal/uploader.Client (plain HTTP, the
+// default) and internal/webrtcupload.Client (docs/adr/0009) both satisfy
+// it, selected by UPLOAD_TRANSPORT (internal/config) at startup. Nothing
+// downstream of this interface needs to know or care which one is active.
+type Uploader interface {
+	Upload(ctx context.Context, token, orgID, matchID, cameraID string, clipBytes []byte) (string, error)
+}
 
 // Capture resolution/frame rate: requested as ideal, not exact,
 // constraints (internal/capture.Open), so this same binary requests
@@ -86,9 +96,17 @@ func main() {
 		go audioCaptureLoop(mic, audioRing)
 	}
 
-	srv := &server{cfg: cfg, ring: ring, audioRing: audioRing, uploader: uploader.NewClient(cfg.GatewayURL)}
+	var uploadClient Uploader
+	switch cfg.UploadTransport {
+	case "webrtc":
+		uploadClient = webrtcupload.NewClient(cfg.GatewayURL)
+	default:
+		uploadClient = uploader.NewClient(cfg.GatewayURL)
+	}
 
-	slog.Info("edge-agent starting", "port", cfg.Port, "buffer_window", cfg.BufferWindow, "org_id", cfg.OrgID, "match_id", cfg.MatchID, "camera_id", cfg.CameraID)
+	srv := &server{cfg: cfg, ring: ring, audioRing: audioRing, uploader: uploadClient}
+
+	slog.Info("edge-agent starting", "port", cfg.Port, "buffer_window", cfg.BufferWindow, "org_id", cfg.OrgID, "match_id", cfg.MatchID, "camera_id", cfg.CameraID, "upload_transport", cfg.UploadTransport)
 	if err := http.ListenAndServe(":"+cfg.Port, srv.router()); err != nil {
 		slog.Error("edge-agent server exited", "error", err)
 		os.Exit(1)
@@ -150,7 +168,7 @@ type server struct {
 	cfg       config.Config
 	ring      *buffer.RingBuffer
 	audioRing *buffer.AudioRingBuffer
-	uploader  *uploader.Client
+	uploader  Uploader
 }
 
 func (s *server) router() http.Handler {

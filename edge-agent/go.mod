@@ -2,7 +2,10 @@ module github.com/cricketdrs/edge-agent
 
 go 1.23
 
-require github.com/pion/mediadevices v0.10.0
+require (
+	github.com/pion/mediadevices v0.10.0
+	github.com/pion/webrtc/v4 v4.1.8
+)
 
 require (
 	github.com/blackjack/webcam v0.6.1 // indirect
@@ -23,7 +26,6 @@ require (
 	github.com/pion/stun/v3 v3.0.2 // indirect
 	github.com/pion/transport/v3 v3.1.1 // indirect
 	github.com/pion/turn/v4 v4.1.3 // indirect
-	github.com/pion/webrtc/v4 v4.1.8 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/image v0.23.0 // indirect
