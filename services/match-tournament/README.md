@@ -37,19 +37,19 @@ auth" section below, which deliberately *doesn't* share code, for different reas
 
 ## Shared auth with Identity & Access — read this before running both together
 
-This service duplicates a small (~60-line) JWT-verification adapter and the `Role` enum rather than
-importing Identity & Access's code — Go's `internal/` visibility rules make that literally impossible
-across services, and a new shared package wasn't justified yet for two data points (see the
-implementation plan's "Decision flagged" note; revisit once a third service needs the same thing).
+The `Role` enum and JWT-verification logic used to be a hand-copied ~60-line adapter — now they're a
+thin wrapper around `services/platformauth`, a shared, non-`internal/` package importable across every
+service in this module (`docs/adr/0008-platformauth-shared-package.md`). `CanManageMatches` (this
+service's own authorization decision) still lives locally — only the shared identity/token vocabulary
+moved.
 
 **Consequence: both services must be started with the exact same `JWT_SIGNING_KEY`.** If unset, both
-services fall back to `insecureDevSigningKey` — an identical, committed, obviously-fake constant
-defined in each service's `cmd/main.go` (both log a loud `WARN` when they use it). This exists purely
-so a zero-config single-command dev/preview run (this repo's `.claude/launch.json`, whose format has
-no way to inject an env var) has the two services able to talk to each other without any manual setup.
-It is **not a real secret** — anything beyond solo local preview (a shared dev environment, staging,
-production, or running one service with an explicit `JWT_SIGNING_KEY` and the other without) must set
-the same real value on both:
+services fall back to `platformauth.InsecureDevSigningKey` — an identical, committed, obviously-fake
+constant (both log a loud `WARN` when they use it). This exists purely so a zero-config single-command
+dev/preview run (this repo's `.claude/launch.json`, whose format has no way to inject an env var) has
+the two services able to talk to each other without any manual setup. It is **not a real secret** —
+anything beyond solo local preview (a shared dev environment, staging, production, or running one
+service with an explicit `JWT_SIGNING_KEY` and the other without) must set the same real value on both:
 
 ```bash
 # both services need this to be the same value
@@ -117,7 +117,7 @@ the manual walkthrough above.
 
 - **No Postgres adapter yet** — see "Persistence" above.
 - **JWT verification and the `Role` enum are duplicated from Identity & Access**, not shared — see
-  "Shared auth" above.
+  "Shared auth" above (this one's now closed — see `docs/adr/0008`).
 - **Review-quota is a stored rule, not enforced consumption** — `PlayingConditions.ReviewQuotaPerInnings`
   is configuration; there's no review-triggering code yet to consume it against (Review Orchestration
   Service, `phases.md` Phase 7).

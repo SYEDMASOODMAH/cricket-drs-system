@@ -1,31 +1,23 @@
 package domain
 
-// Role mirrors identity-access's persona enum (prd.md Section 4).
-// Duplicated rather than imported — this is the 4th instance of this
-// exact duplication (identity-access, match-tournament,
-// media-ingest-gateway, now this service). A shared services/platformauth
-// package was considered for this slice and explicitly deferred (see
-// docs/adr/0005 and this service's README) — extraction stays its own
-// dedicated, reviewable change, not bundled into a new service's PR.
-type Role string
+import "github.com/cricketdrs/services/platformauth"
+
+// Role aliases platformauth.Role, the shared identity vocabulary every
+// service in this module now verifies against (docs/adr/0008) — this used
+// to be a hand-copied definition (the 4th instance of the exact
+// duplication that ADR triggered on); see that ADR for why the enum
+// itself was safe to share while CanManageCalibration below (a real,
+// service-specific authorization decision) was not.
+type Role = platformauth.Role
 
 const (
-	RolePlayer         Role = "player"
-	RoleCoach          Role = "coach"
-	RoleUmpire         Role = "umpire"
-	RoleOrganizerAdmin Role = "organizer_admin"
-	RoleBoardAdmin     Role = "board_admin"
-	RoleFan            Role = "fan"
+	RolePlayer         = platformauth.RolePlayer
+	RoleCoach          = platformauth.RoleCoach
+	RoleUmpire         = platformauth.RoleUmpire
+	RoleOrganizerAdmin = platformauth.RoleOrganizerAdmin
+	RoleBoardAdmin     = platformauth.RoleBoardAdmin
+	RoleFan            = platformauth.RoleFan
 )
-
-func (r Role) Valid() bool {
-	switch r {
-	case RolePlayer, RoleCoach, RoleUmpire, RoleOrganizerAdmin, RoleBoardAdmin, RoleFan:
-		return true
-	default:
-		return false
-	}
-}
 
 // CanManageCalibration reports whether role may register cameras and
 // submit/view calibration profiles. organizer_admin only, same rationale

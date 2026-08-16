@@ -9,14 +9,21 @@ import (
 	"github.com/cricketdrs/services/match-tournament/internal/domain"
 )
 
-// signToken builds a token exactly as identity-access's JWTIssuer would,
-// without depending on that service — this is the wire contract both
-// sides agree on (see tokenClaims's doc comment).
+// signToken builds a token exactly as identity-access's issuer would,
+// without depending on that service — used to confirm JWTVerifier's
+// adapter correctly converts platformauth.Claims into this service's
+// typed domain IDs. The verify logic itself (expired/wrong-key/garbage
+// rejection) is tested once in services/platformauth, not re-tested here —
+// see docs/adr/0008-platformauth-shared-package.md.
 func signToken(t *testing.T, signingKey []byte, userID string, orgID domain.OrganizationID, role domain.Role, expiresAt time.Time) string {
 	t.Helper()
-	c := tokenClaims{
-		OrganizationID: orgID,
-		Role:           role,
+	c := struct {
+		OrganizationID string `json:"org"`
+		Role           string `json:"role"`
+		jwt.RegisteredClaims
+	}{
+		OrganizationID: string(orgID),
+		Role:           string(role),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -30,7 +37,7 @@ func signToken(t *testing.T, signingKey []byte, userID string, orgID domain.Orga
 	return token
 }
 
-func TestJWTVerifier_ValidToken(t *testing.T) {
+func TestJWTVerifier_ConvertsClaimsToDomainTypes(t *testing.T) {
 	key := []byte("shared-signing-key")
 	token := signToken(t, key, "user-1", "org-1", domain.RoleOrganizerAdmin, time.Now().Add(time.Hour))
 
@@ -44,26 +51,7 @@ func TestJWTVerifier_ValidToken(t *testing.T) {
 	}
 }
 
-func TestJWTVerifier_ExpiredTokenRejected(t *testing.T) {
-	key := []byte("shared-signing-key")
-	token := signToken(t, key, "user-1", "org-1", domain.RoleOrganizerAdmin, time.Now().Add(-time.Hour))
-
-	v := NewJWTVerifier(key)
-	if _, err := v.Verify(token); err == nil {
-		t.Fatal("expected an expired token to be rejected")
-	}
-}
-
-func TestJWTVerifier_WrongKeyRejected(t *testing.T) {
-	token := signToken(t, []byte("key-one"), "user-1", "org-1", domain.RoleOrganizerAdmin, time.Now().Add(time.Hour))
-
-	v := NewJWTVerifier([]byte("key-two"))
-	if _, err := v.Verify(token); err == nil {
-		t.Fatal("expected verification to fail with a different signing key — this is exactly the shared-JWT_SIGNING_KEY footgun the README warns about")
-	}
-}
-
-func TestJWTVerifier_GarbageRejected(t *testing.T) {
+func TestJWTVerifier_PropagatesVerificationErrors(t *testing.T) {
 	v := NewJWTVerifier([]byte("shared-signing-key"))
 	if _, err := v.Verify("not-a-jwt"); err == nil {
 		t.Fatal("expected garbage input to be rejected")

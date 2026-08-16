@@ -1,23 +1,28 @@
+// JWT issuing/verification now adapts services/platformauth's Issuer
+// instead of hand-rolling HS256 parsing here — see
+// docs/adr/0008-platformauth-shared-package.md for why Issue/Verify moved
+// there while this package's bcrypt hasher (see bcrypt.go) stayed local.
 package security
 
 import (
-	"errors"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/cricketdrs/services/identity-access/internal/domain"
 	"github.com/cricketdrs/services/identity-access/internal/service"
+	"github.com/cricketdrs/services/platformauth"
 )
 
 // TokenTTL is the access-token lifetime. Short-lived per architecture.md
 // Section 15's session-token guidance, applied service-wide since Phase 1
-// has only one token type.
+// has only one token type. Stays local: token lifetime is identity-access's
+// own policy decision, not shared auth plumbing — platformauth.Issuer.Issue
+// takes it as a parameter rather than hardcoding one.
 const TokenTTL = 15 * time.Minute
 
-// JWTIssuer implements service.TokenIssuer.
+// JWTIssuer implements service.TokenIssuer by converting between this
+// service's typed domain IDs and platformauth's plain-string wire format.
 type JWTIssuer struct {
-	signingKey []byte
+	i *platformauth.Issuer
 }
 
 // NewJWTIssuer builds an issuer from a signing key. The key is read from
@@ -26,44 +31,21 @@ type JWTIssuer struct {
 // manager (architecture.md Section 15); wiring that injection is deferred
 // until a cloud provider is chosen.
 func NewJWTIssuer(signingKey []byte) *JWTIssuer {
-	return &JWTIssuer{signingKey: signingKey}
-}
-
-type tokenClaims struct {
-	OrganizationID domain.OrganizationID `json:"org"`
-	Role           domain.Role           `json:"role"`
-	jwt.RegisteredClaims
+	return &JWTIssuer{i: platformauth.NewIssuer(signingKey)}
 }
 
 func (j *JWTIssuer) Issue(userID domain.UserID, orgID domain.OrganizationID, role domain.Role) (string, error) {
-	now := time.Now()
-	c := tokenClaims{
-		OrganizationID: orgID,
-		Role:           role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   string(userID),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(TokenTTL)),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, c)
-	return token.SignedString(j.signingKey)
+	return j.i.Issue(string(userID), string(orgID), role, TokenTTL)
 }
 
 func (j *JWTIssuer) Verify(tokenString string) (service.Claims, error) {
-	var c tokenClaims
-	token, err := jwt.ParseWithClaims(tokenString, &c, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("unexpected signing method")
-		}
-		return j.signingKey, nil
-	})
-	if err != nil || !token.Valid {
-		return service.Claims{}, errors.New("invalid or expired token")
+	c, err := j.i.Verify(tokenString)
+	if err != nil {
+		return service.Claims{}, err
 	}
 	return service.Claims{
-		UserID:         domain.UserID(c.Subject),
-		OrganizationID: c.OrganizationID,
+		UserID:         domain.UserID(c.UserID),
+		OrganizationID: domain.OrganizationID(c.OrganizationID),
 		Role:           c.Role,
 	}, nil
 }

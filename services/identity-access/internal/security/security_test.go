@@ -23,6 +23,12 @@ func TestBcryptHasher_HashAndCompare(t *testing.T) {
 	}
 }
 
+// TestJWTIssuer_IssueAndVerify confirms JWTIssuer's adapter correctly
+// round-trips domain.UserID/OrganizationID/Role through platformauth's
+// plain-string wire format. The underlying issue/verify logic itself
+// (expired/wrong-key/garbage rejection, TTL handling) is tested once in
+// services/platformauth, not re-tested here — see
+// docs/adr/0008-platformauth-shared-package.md.
 func TestJWTIssuer_IssueAndVerify(t *testing.T) {
 	issuer := NewJWTIssuer([]byte("test-signing-key"))
 
@@ -40,20 +46,7 @@ func TestJWTIssuer_IssueAndVerify(t *testing.T) {
 	}
 }
 
-func TestJWTIssuer_VerifyRejectsWrongKey(t *testing.T) {
-	issuer := NewJWTIssuer([]byte("key-one"))
-	token, err := issuer.Issue("user-1", "org-1", domain.RolePlayer)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	otherIssuer := NewJWTIssuer([]byte("key-two"))
-	if _, err := otherIssuer.Verify(token); err == nil {
-		t.Fatal("expected verification to fail with a different signing key")
-	}
-}
-
-func TestJWTIssuer_VerifyRejectsGarbage(t *testing.T) {
+func TestJWTIssuer_VerifyPropagatesErrors(t *testing.T) {
 	issuer := NewJWTIssuer([]byte("test-signing-key"))
 	if _, err := issuer.Verify("not-a-jwt"); err == nil {
 		t.Fatal("expected verification of garbage input to fail")

@@ -48,16 +48,16 @@ media-ingest-gateway's deferred `matchID` cross-validation already established f
 
 ## Shared auth with the other three services
 
-This service duplicates the same JWT-verification adapter and `Role` enum every other service in this
-module does, for the same reason (Go's `internal/` visibility rules — see match-tournament's README for
-the full rationale). **This is the 4th instance of this exact duplication.** Extracting a shared
-`services/platformauth` package was considered and explicitly deferred for this change (see
-`docs/adr/0005`) — kept as its own dedicated, reviewable future change rather than bundled into a new
-service's PR.
+The `Role` enum and JWT-verification logic used to be hand-copied a 4th time here — now they're a thin
+wrapper around `services/platformauth`, a shared, non-`internal/` package importable across every
+service in this module (`docs/adr/0008-platformauth-shared-package.md`, which resolves the deferral
+`docs/adr/0005` originally noted). `CanManageCalibration` (this service's own authorization decision)
+still lives locally — only the shared identity/token vocabulary moved.
 
 **Consequence: all four services must be started with the same `JWT_SIGNING_KEY`** (or all four left
-unset, in which case they share the same committed insecure dev-only fallback — see identity-access's
-README for why that fallback exists and what it's for).
+unset, in which case they share the same committed insecure dev-only fallback,
+`platformauth.InsecureDevSigningKey` — see identity-access's README for why that fallback exists and
+what it's for).
 
 ## Cross-service `CameraID` validation
 
@@ -125,6 +125,5 @@ For the extrinsic-calibration algorithm's own tests (synthetic pitch-geometry fi
   (or a future venue-setup tool) via `PUT .../calibration`; see "Go owns registration/storage" above.
 - **Placeholder lens-distortion and validity-threshold numbers** — structurally correct, not measured;
   pending real Phase 0 field-validation data.
-- **JWT verification and the `Role` enum are duplicated a 4th time** — see "Shared auth" above.
 - **AI-assisted auto-calibration for ad-hoc setups** (`prd.md` Section 8) is explicitly Post-MVP, not
   attempted here.

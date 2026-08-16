@@ -66,16 +66,16 @@ Two adapters behind the same `ObjectStore` port:
 
 ## Shared auth with Identity & Access and Match & Tournament
 
-This service duplicates the same small JWT-verification adapter and `Role` enum match-tournament does,
-for the same reason (Go's `internal/` visibility rules — see match-tournament's README for the full
-rationale). **This is now the third service with this exact duplication** — per the original "revisit
-once a third service needs the same thing" note, extracting a shared auth package is worth actually
-reconsidering next time any of these three needs a change, rather than continuing to hand-copy a fourth
-time.
+The `Role` enum and JWT-verification logic used to be hand-copied per service — now they're a thin
+wrapper around `services/platformauth`, a shared, non-`internal/` package importable across every
+service in this module (`docs/adr/0008-platformauth-shared-package.md`). `CanUploadClips` (this
+service's own authorization decision) still lives locally — only the shared identity/token vocabulary
+moved.
 
 **Consequence: all three services must be started with the same `JWT_SIGNING_KEY`** (or all three left
-unset, in which case they share the same committed insecure dev-only fallback — see identity-access's
-README for why that fallback exists and what it's for).
+unset, in which case they share the same committed insecure dev-only fallback,
+`platformauth.InsecureDevSigningKey` — see identity-access's README for why that fallback exists and
+what it's for).
 
 ## Upload authorization
 
@@ -148,8 +148,6 @@ is exercised directly in `internal/service` and `internal/httpapi`, same as the 
 - **No cross-service `matchID` validation** against match-tournament — treated as an opaque, trusted
   foreign reference for this Phase 2 "basic" slice. (`camera_id` IS now cross-validated — see "Cross-service
   `CameraID` validation" above.)
-- **JWT verification and the `Role` enum are duplicated a third time** — see "Shared auth" above; worth
-  actually revisiting now.
 - **No live Go↔Python wiring for sync** — `find_offset`'s output must currently be submitted by hand (or
   a future tool) via `PUT .../clips/{clipID}/sync`; see "Multi-camera time sync" above.
 - **Placeholder sync confidence threshold** — `domain.MinSyncCorrelationScore` is structurally correct,

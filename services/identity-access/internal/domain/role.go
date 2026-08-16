@@ -1,28 +1,25 @@
 package domain
 
-// Role is a fixed persona, per prd.md Section 4. It is intentionally a
-// closed set for Phase 1 rather than a dynamic policy engine — see
-// docs/adr/0001-go-for-core-services.md's "revisit if" clause: hand-rolled
-// RBAC is the deliberate choice while the persona list stays this small.
-type Role string
+import "github.com/cricketdrs/services/platformauth"
+
+// Role aliases platformauth.Role, the shared identity vocabulary every
+// service in this module now verifies against (docs/adr/0008) — this
+// service is the source of that vocabulary (prd.md Section 4), so the
+// alias just makes explicit that identity-access, platformauth, and every
+// verify-only service now agree on one definition instead of 4 hand-copied
+// ones. Permission/HasPermission below (this service's own authorization
+// model) stay local — platformauth only owns the identity/token
+// vocabulary, not per-service authorization decisions.
+type Role = platformauth.Role
 
 const (
-	RolePlayer         Role = "player"
-	RoleCoach          Role = "coach"
-	RoleUmpire         Role = "umpire"
-	RoleOrganizerAdmin Role = "organizer_admin"
-	RoleBoardAdmin     Role = "board_admin"
-	RoleFan            Role = "fan"
+	RolePlayer         = platformauth.RolePlayer
+	RoleCoach          = platformauth.RoleCoach
+	RoleUmpire         = platformauth.RoleUmpire
+	RoleOrganizerAdmin = platformauth.RoleOrganizerAdmin
+	RoleBoardAdmin     = platformauth.RoleBoardAdmin
+	RoleFan            = platformauth.RoleFan
 )
-
-func (r Role) Valid() bool {
-	switch r {
-	case RolePlayer, RoleCoach, RoleUmpire, RoleOrganizerAdmin, RoleBoardAdmin, RoleFan:
-		return true
-	default:
-		return false
-	}
-}
 
 // Permission is a coarse-grained action gate. Per rules.md Section 1
 // (Open/Closed), new permissions can be added and assigned to roles below

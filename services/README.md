@@ -13,10 +13,12 @@ into separately-deployed services is a low-friction move, not a rewrite.
 | `media-ingest-gateway` | Accepts uploaded match video clips, stores them in object storage (Phase 2) |
 | `camera-calibration` | Camera/venue registration, calibration-profile storage and validity (Phase 2) |
 
-`observability/` is a shared, non-`internal/` package (metrics/tracing/logging middleware) importable
-by every service above — see `docs/adr/0004-shared-observability-package.md` for why this one thing is
-shared while most cross-service code (JWT verification, the `Role` enum) is deliberately duplicated
-per-service instead.
+`observability/` and `platformauth/` are shared, non-`internal/` packages importable by every service
+above. `observability` covers metrics/tracing/logging middleware (`docs/adr/0004`); `platformauth`
+covers the `Role` enum and JWT issuing/verification (`docs/adr/0008`) — extracted once direct comparison
+confirmed all 4 services' copies were byte-for-byte identical. Per-service authorization *decisions*
+(`CanUploadClips`, `CanManageMatches`, `CanManageCalibration`, identity-access's `Permission` table)
+stay in each service's own `internal/domain`, since those genuinely differ per service.
 
 ## Conventions
 
