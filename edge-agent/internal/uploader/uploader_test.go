@@ -3,11 +3,14 @@ package uploader
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/cricketdrs/edge-agent/internal/transport"
 )
 
 func TestUpload_Success(t *testing.T) {
@@ -64,6 +67,14 @@ func TestUpload_GatewayErrorPropagated(t *testing.T) {
 	if !strings.Contains(err.Error(), "permission denied") {
 		t.Fatalf("expected error to mention the gateway's message, got: %v", err)
 	}
+
+	var rejected *transport.RejectedError
+	if !errors.As(err, &rejected) {
+		t.Fatalf("expected a *transport.RejectedError (a gateway rejection should never be retried), got %T", err)
+	}
+	if rejected.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected StatusCode 403, got %d", rejected.StatusCode)
+	}
 }
 
 func TestUpload_MissingClipIDInResponse(t *testing.T) {
@@ -86,5 +97,10 @@ func TestUpload_NetworkErrorPropagated(t *testing.T) {
 	_, err := client.Upload(context.Background(), "test-token", "org-1", "match-1", "cam-1", []byte("clip-bytes"))
 	if err == nil {
 		t.Fatal("expected a network error")
+	}
+
+	var rejected *transport.RejectedError
+	if errors.As(err, &rejected) {
+		t.Fatal("a network error is transient and must not be classified as a RejectedError (callers should retry it)")
 	}
 }

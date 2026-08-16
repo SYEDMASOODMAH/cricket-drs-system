@@ -11,6 +11,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,10 +22,23 @@ import (
 	"github.com/cricketdrs/edge-agent/internal/capture"
 	"github.com/cricketdrs/edge-agent/internal/clipformat"
 	"github.com/cricketdrs/edge-agent/internal/config"
+	"github.com/cricketdrs/edge-agent/internal/transport"
 	"github.com/cricketdrs/edge-agent/internal/uploader"
 	"github.com/cricketdrs/edge-agent/internal/wav"
 	"github.com/cricketdrs/edge-agent/internal/webrtcupload"
 )
+
+// maxUploadAttempts and uploadRetryBackoff bound handleTrigger's retry
+// loop for transient upload failures (network blips, a briefly
+// unreachable gateway) — a definitive rejection (transport.RejectedError)
+// short-circuits immediately instead, since retrying it can never
+// succeed. A fixed backoff is simple and sufficient for 3 attempts; not
+// worth tuning further without real venue network data to justify it.
+const maxUploadAttempts = 3
+
+// uploadRetryBackoff is a var, not a const, purely so tests can shrink it
+// — production always runs with the 2s default set here.
+var uploadRetryBackoff = 2 * time.Second
 
 // Uploader is the transport-agnostic contract handleTrigger pushes an
 // encoded clip through — internal/uploader.Client (plain HTTP, the
@@ -208,17 +223,55 @@ func (s *server) handleTrigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-	clipID, err := s.uploader.Upload(ctx, s.cfg.BearerToken, s.cfg.OrgID, s.cfg.MatchID, s.cfg.CameraID, encoded)
+	clipID, err := uploadWithRetry(r.Context(), s.uploader, s.cfg, encoded)
 	if err != nil {
-		slog.Error("edge-agent: failed to upload clip", "error", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		var rejected *transport.RejectedError
+		if errors.As(err, &rejected) {
+			status := http.StatusBadGateway
+			if rejected.StatusCode >= 400 && rejected.StatusCode < 500 {
+				status = rejected.StatusCode
+			}
+			slog.Error("edge-agent: upload rejected, not retrying", "error", err)
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+		slog.Error("edge-agent: upload failed after retries", "error", err, "attempts", maxUploadAttempts)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("upload failed after %d attempts: %s", maxUploadAttempts, err.Error())})
 		return
 	}
 
 	slog.Info("edge-agent: clip uploaded", "clip_id", clipID, "frame_count", len(frames))
 	writeJSON(w, http.StatusOK, triggerResponse{ClipID: clipID, FrameCount: len(frames)})
+}
+
+// uploadWithRetry calls uploader.Upload up to maxUploadAttempts times with
+// uploadRetryBackoff between attempts, resending the exact same encoded
+// bytes each time (the ring buffer keeps rolling independently, so a
+// retry must resend what was actually triggered, not a newer window). A
+// transport.RejectedError (the gateway definitively rejected the request)
+// short-circuits immediately — retrying it can never succeed.
+func uploadWithRetry(ctx context.Context, u Uploader, cfg config.Config, encoded []byte) (string, error) {
+	var clipID string
+	var err error
+	for attempt := 1; attempt <= maxUploadAttempts; attempt++ {
+		uploadCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		clipID, err = u.Upload(uploadCtx, cfg.BearerToken, cfg.OrgID, cfg.MatchID, cfg.CameraID, encoded)
+		cancel()
+		if err == nil {
+			return clipID, nil
+		}
+
+		var rejected *transport.RejectedError
+		if errors.As(err, &rejected) {
+			return "", err
+		}
+
+		if attempt < maxUploadAttempts {
+			slog.Warn("edge-agent: upload attempt failed, retrying", "attempt", attempt, "error", err)
+			time.Sleep(uploadRetryBackoff)
+		}
+	}
+	return "", err
 }
 
 // handleAudioSnapshot returns the currently buffered audio as a .wav

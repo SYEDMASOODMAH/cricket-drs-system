@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/pion/webrtc/v4"
+
+	"github.com/cricketdrs/edge-agent/internal/transport"
 )
 
 // chunkSize is the size of each DataChannel.Send call. The data channel
@@ -142,7 +144,7 @@ func (c *Client) Upload(ctx context.Context, token, orgID, matchID, cameraID str
 	select {
 	case ack := <-ackCh:
 		if ack.Error != "" {
-			return "", fmt.Errorf("webrtcupload: gateway rejected upload: %s", ack.Error)
+			return "", &transport.RejectedError{Message: ack.Error}
 		}
 		if ack.ClipID == "" {
 			return "", fmt.Errorf("webrtcupload: gateway ack missing clip id")
@@ -185,7 +187,7 @@ func (c *Client) signal(ctx context.Context, token, orgID, matchID, cameraID str
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return webrtc.SessionDescription{}, fmt.Errorf("webrtcupload: gateway rejected signaling (%d)", resp.StatusCode)
+		return webrtc.SessionDescription{}, &transport.RejectedError{StatusCode: resp.StatusCode, Message: "signaling rejected"}
 	}
 
 	var answer webrtc.SessionDescription

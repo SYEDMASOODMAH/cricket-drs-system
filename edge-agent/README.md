@@ -95,6 +95,21 @@ Building this surfaced two real bugs, both found only by testing against the act
 Both implement the same small `Upload(ctx, token, orgID, matchID, cameraID, clipBytes) (string, error)`
 contract, so `handleTrigger` itself doesn't change based on which is active.
 
+### Retry and rejection handling
+
+Both transports classify their own failures via `internal/transport.RejectedError` — a definitive
+rejection (permission denied, an unregistered `camera_id`, a malformed request) vs. everything else
+(network blips, timeouts), which `handleTrigger` treats very differently:
+
+- **`RejectedError`** short-circuits immediately — retrying can never succeed. If it carries an HTTP
+  status code in the 4xx range (the HTTP transport always has one; the WebRTC transport only has one for
+  a *signaling*-level rejection, not an ack-carried one — see `internal/webrtcupload`'s doc comments),
+  that status is passed straight through as `/trigger`'s own response instead of a generic `502`.
+- **Anything else** is retried up to 3 times with a 2s fixed backoff, resending the exact same
+  already-encoded clip bytes each time (the ring buffer keeps rolling independently — a retry must not
+  silently resend a *different*, newer window than what was actually triggered). Exhausting all attempts
+  returns `502` with the attempt count in the message.
+
 ## Run locally
 
 Requires a UVC camera connected in Webcam Mode, and `media-ingest-gateway` running (see its README for a
@@ -140,11 +155,14 @@ curl -s "localhost:9090/audio-snapshot" -o snapshot.wav
 go test ./... -cover
 ```
 
-`buffer`, `clipformat`, `wav`, and `uploader` are pure/network-mockable and are unit-tested normally
-(79-100% coverage). `webrtcupload` is tested against a real (if loopback) `pion/webrtc` peer connection
-and data channel — not a mock of the transport — proving the chunk-send/ack/close sequence actually
-works over real WebRTC (~79% coverage; the uncovered lines are timeout paths that would need real
-multi-second waits to trigger deterministically). `capture` wraps real hardware I/O and isn't
+`buffer`, `clipformat`, `wav`, `transport`, and `uploader` are pure/network-mockable and are unit-tested
+normally (79-100% coverage). `webrtcupload` is tested against a real (if loopback) `pion/webrtc` peer
+connection and data channel — not a mock of the transport — proving the chunk-send/ack/close sequence
+actually works over real WebRTC (~80% coverage; the uncovered lines are timeout paths that would need
+real multi-second waits to trigger deterministically). `cmd`'s `uploadWithRetry` (the retry/rejection
+logic — see "Retry and rejection handling" above) is unit-tested against a fake `Uploader`; the rest of
+`cmd` (device wiring, capture loops) is untestable the same way `capture` is, below. `capture` wraps real
+hardware I/O and isn't
 meaningfully unit-testable the way the others are — both the camera and microphone were instead
 exercised for real against the DJI Action 5 Pro during manual verification (see the implementation
 plan), the first components this session whose real backend, not a fake, was actually run.

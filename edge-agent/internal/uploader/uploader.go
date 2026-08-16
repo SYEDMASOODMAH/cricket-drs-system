@@ -13,6 +13,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/cricketdrs/edge-agent/internal/transport"
 )
 
 // Client uploads clips to a single Media Ingest Gateway instance.
@@ -66,9 +68,9 @@ func (c *Client) Upload(ctx context.Context, token string, orgID, matchID, camer
 	if resp.StatusCode != http.StatusCreated {
 		var errBody errorResponse
 		if jsonErr := json.Unmarshal(body, &errBody); jsonErr == nil && errBody.Error != "" {
-			return "", fmt.Errorf("uploader: gateway rejected upload (%d): %s", resp.StatusCode, errBody.Error)
+			return "", &transport.RejectedError{StatusCode: resp.StatusCode, Message: errBody.Error}
 		}
-		return "", fmt.Errorf("uploader: gateway rejected upload (%d): %s", resp.StatusCode, string(body))
+		return "", &transport.RejectedError{StatusCode: resp.StatusCode, Message: string(body)}
 	}
 
 	var uploaded uploadResponse
