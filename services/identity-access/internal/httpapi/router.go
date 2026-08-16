@@ -19,6 +19,7 @@ import (
 func (a *API) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
+	r.Use(corsMiddleware)
 	r.Use(a.obs.TracingMiddleware)
 	r.Use(a.obs.MetricsMiddleware)
 	r.Use(a.obs.LoggingMiddleware)

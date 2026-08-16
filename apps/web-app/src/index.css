@@ -1,0 +1,106 @@
+/* Minimal styling using docs/design.md Section 3's light-theme tokens —
+   enough that this doesn't look broken, not a full design system (that's
+   Phase 7/9 per web-app's README). */
+:root {
+  --color-bg: #f7f8f6;
+  --color-text: #171a1c;
+  --color-primary: #0b3d2e;
+  --color-border: #d8dcd9;
+  --color-error: #c0392b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.page {
+  padding: 24px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.page-centered {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.subtitle {
+  color: #5a615c;
+  margin-top: -8px;
+}
+
+.card {
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 400px;
+}
+
+label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+input {
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+button {
+  margin-top: 8px;
+  padding: 10px 16px;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.error {
+  color: var(--color-error);
+}
