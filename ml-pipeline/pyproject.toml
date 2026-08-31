@@ -24,7 +24,7 @@ dev = [
     # import-block formatting) and broke CI on code that passed locally
     # under ruff 0.15.22. Bump deliberately, verifying clean locally
     # first, not by drift.
-    "ruff==0.16.3",
+    "ruff==0.16.5",
 ]
 
 [tool.ruff]
