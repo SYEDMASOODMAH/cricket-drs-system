@@ -169,5 +169,9 @@ is exercised directly in `internal/service` and `internal/httpapi`, same as the 
   a future tool) via `PUT .../clips/{clipID}/sync`; see "Multi-camera time sync" above.
 - **Placeholder sync confidence threshold** — `domain.MinSyncCorrelationScore` is structurally correct,
   not measured; no document specifies a real tolerance.
-- **No real audio extraction from uploaded clips** — `ml-pipeline/time-sync` operates on already-decoded
-  sample arrays; extracting audio from an actual `.mp4` needs a dependency (ffmpeg/PyAV) not added here.
+- **No live Go→Python wiring for sync extraction, but the extraction itself now exists** —
+  `ml-pipeline/time-sync/time_sync/audio_extraction.py`'s `extract_audio`/`find_offset_from_videos` can
+  decode real audio from a real video file (via `ffmpeg`) and compute an offset directly from two clip
+  files. This service still doesn't call that automatically on upload — an offset must be computed and
+  submitted (by hand, or a future tool) the same way as before; only the "no extraction exists at all"
+  half of the gap is closed.
