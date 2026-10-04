@@ -40,3 +40,9 @@ apps/mobile-app/.flutter-plugins-dependencies
 .DS_Store
 .idea/
 .vscode/
+
+# Raw/labeled footage for ml-pipeline's eventual Phase 3 dataset — large
+# personal video files, never meant to be committed (same reason the
+# checked-in test fixtures under tests/fixtures/ are kept to a few KB/sec
+# of real content, not full source files).
+ml-pipeline/dataset/

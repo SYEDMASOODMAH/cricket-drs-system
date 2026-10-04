@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Ball labeling tool</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #12161a;
+    color: #edefec;
+    display: flex;
+    height: 100vh;
+  }
+  #sidebar {
+    width: 320px;
+    overflow-y: auto;
+    border-right: 1px solid #2a2f35;
+    flex-shrink: 0;
+  }
+  #sidebar h1 {
+    font-size: 1rem;
+    padding: 12px 16px;
+    margin: 0;
+    border-bottom: 1px solid #2a2f35;
+  }
+  .clip-row {
+    padding: 10px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #1c2024;
+    font-size: 0.85rem;
+  }
+  .clip-row:hover { background: #1c2024; }
+  .clip-row.active { background: #0b3d2e; }
+  .clip-row .progress { color: #9aa; font-size: 0.75rem; margin-top: 2px; }
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    overflow: hidden;
+  }
+  #status {
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    color: #9aa;
+  }
+  #canvas-wrap {
+    position: relative;
+    line-height: 0;
+  }
+  canvas { cursor: crosshair; background: #000; }
+  #help {
+    margin-top: 12px;
+    font-size: 0.8rem;
+    color: #789;
+    max-width: 960px;
+    text-align: center;
+  }
+  kbd {
+    background: #2a2f35;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h1>Clips</h1>
+  <div id="clip-list"></div>
+</div>
+<div id="main">
+  <div id="status">Select a clip to start labeling.</div>
+  <div id="canvas-wrap">
+    <canvas id="canvas" width="960" height="540"></canvas>
+  </div>
+  <div id="help">
+    <kbd>click</kbd> place ball + next &nbsp; <kbd>scroll</kbd> resize box &nbsp;
+    <kbd>&rarr;</kbd>/<kbd>space</kbd> next &nbsp; <kbd>&larr;</kbd> previous &nbsp;
+    <kbd>N</kbd> mark not visible + next &nbsp; <kbd>Backspace</kbd> clear this frame's label
+  </div>
+</div>
+
+<script>
+const clipListEl = document.getElementById('clip-list');
+const statusEl = document.getElementById('status');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let clips = [];
+let currentClip = null;   // {name, frame_count, fps, reviewed}
+let currentLabels = {};   // {frame_index_str: {x,y,w,h,visible}}
+let frameIndex = 1;       // 1-based
+let boxSize = 24;
+let hoverX = null, hoverY = null;
+let img = new Image();
+let imgScale = 1;
+
+async function loadClips() {
+  const res = await fetch('/api/clips');
+  clips = await res.json();
+  renderClipList();
+}
+
+function renderClipList() {
+  clipListEl.innerHTML = '';
+  for (const c of clips) {
+    const row = document.createElement('div');
+    row.className = 'clip-row' + (currentClip && currentClip.name === c.name ? ' active' : '');
+    row.innerHTML = `<div>${c.name}</div><div class="progress">${c.reviewed}/${c.frame_count} reviewed</div>`;
+    row.onclick = () => openClip(c);
+    clipListEl.appendChild(row);
+  }
+}
+
+async function openClip(c) {
+  currentClip = c;
+  frameIndex = 1;
+  const res = await fetch(`/api/clips/${encodeURIComponent(c.name)}/labels`);
+  const doc = await res.json();
+  currentLabels = doc.labels || {};
+  renderClipList();
+  await showFrame();
+}
+
+async function showFrame() {
+  if (!currentClip) return;
+  statusEl.textContent =
+    `${currentClip.name} — frame ${frameIndex}/${currentClip.frame_count}` +
+    (currentLabels[String(frameIndex)] ? ' (labeled)' : '');
+
+  await new Promise((resolve) => {
+    img.onload = resolve;
+    img.src = `/api/clips/${encodeURIComponent(currentClip.name)}/frames/${frameIndex}?t=${Date.now()}`;
+  });
+
+  imgScale = canvas.width / img.naturalWidth;
+  canvas.height = Math.round(img.naturalHeight * imgScale);
+  draw();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const existing = currentLabels[String(frameIndex)];
+  if (existing && existing.visible !== false) {
+    drawBox(existing.x * imgScale, existing.y * imgScale, existing.w * imgScale, existing.h * imgScale, '#2E9E5B');
+  } else if (existing && existing.visible === false) {
+    ctx.fillStyle = '#D9642C';
+    ctx.font = '14px sans-serif';
+    ctx.fillText('marked: not visible', 8, 20);
+  }
+
+  if (hoverX !== null) {
+    drawBox(hoverX - boxSize / 2, hoverY - boxSize / 2, boxSize, boxSize, '#F5A623');
+  }
+}
+
+function drawBox(x, y, w, h, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+}
+
+async function postLabel(label) {
+  await fetch(`/api/clips/${encodeURIComponent(currentClip.name)}/labels/${frameIndex}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(label),
+  });
+  if (label === null) {
+    delete currentLabels[String(frameIndex)];
+  } else {
+    currentLabels[String(frameIndex)] = label;
+  }
+  const clip = clips.find((c) => c.name === currentClip.name);
+  if (clip) clip.reviewed = Object.keys(currentLabels).length;
+}
+
+async function nextFrame() {
+  if (!currentClip || frameIndex >= currentClip.frame_count) return;
+  frameIndex += 1;
+  await showFrame();
+}
+
+async function prevFrame() {
+  if (!currentClip || frameIndex <= 1) return;
+  frameIndex -= 1;
+  await showFrame();
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  hoverX = (e.clientX - rect.left) / imgScale;
+  hoverY = (e.clientY - rect.top) / imgScale;
+  draw();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoverX = null;
+  hoverY = null;
+  draw();
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  boxSize = Math.max(6, Math.min(200, boxSize - Math.sign(e.deltaY) * 2));
+  draw();
+});
+
+canvas.addEventListener('click', async (e) => {
+  // Computes x/y fresh from the event itself, not the hoverX/hoverY state
+  // mousemove sets — a click doesn't always arrive after a mousemove on
+  // the same point (e.g. clicking immediately after the canvas appears,
+  // or anything dispatching click without a preceding move), and gating
+  // on hoverX silently dropped exactly those clicks.
+  if (!currentClip) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / imgScale;
+  const y = (e.clientY - rect.top) / imgScale;
+  await postLabel({ x: Math.round(x - boxSize / 2), y: Math.round(y - boxSize / 2), w: boxSize, h: boxSize, visible: true });
+  renderClipList();
+  await nextFrame();
+});
+
+document.addEventListener('keydown', async (e) => {
+  if (!currentClip) return;
+  if (e.key === 'ArrowRight' || e.key === ' ') {
+    e.preventDefault();
+    await nextFrame();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    await prevFrame();
+  } else if (e.key === 'n' || e.key === 'N') {
+    e.preventDefault();
+    await postLabel({ visible: false });
+    renderClipList();
+    await nextFrame();
+  } else if (e.key === 'Backspace') {
+    e.preventDefault();
+    await postLabel(null);
+    renderClipList();
+    draw();
+  }
+});
+
+loadClips();
+</script>
+</body>
+</html>

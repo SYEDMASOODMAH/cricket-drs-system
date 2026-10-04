@@ -46,7 +46,9 @@ disallow_untyped_defs = true
 # one), which mypy can't disambiguate into unique module names the way
 # pytest's importlib import mode can (see addopts below). Type-checking
 # is scoped to source packages; test files are exercised by pytest.
-exclude = "^[^/]+/tests/"
+# Unanchored (not "^[^/]+/tests/") so it also excludes nested tests/ dirs
+# like tools/labeling/tests/, not just one-level-deep ones.
+exclude = "/tests/"
 
 [tool.pytest.ini_options]
 # Each sub-package (ball-tracking, edge-detection, ...) has its own tests/
@@ -62,5 +64,9 @@ addopts = "--import-mode=importlib"
 # whose tests import their own package code (the placeholder-stub ones'
 # test_placeholder.py files don't), so they're the ones that need this —
 # adding each source dir directly to sys.path for the test session, rather
-# than reworking package discovery for all seven at once.
-pythonpath = ["camera-calibration", "time-sync"]
+# than reworking package discovery for all seven at once. "." (this
+# directory itself) is added for tools/labeling, a dev-only annotation
+# utility (not one of the seven ML sub-packages) imported as
+# tools.labeling.* — it needs ml-pipeline/ itself on sys.path, not a
+# subdirectory, since "tools" is the top-level package name.
+pythonpath = ["camera-calibration", "time-sync", "."]

@@ -48,6 +48,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "apps/umpire-console", "run", "dev", "--", "--port", "5174"],
       "port": 5174
+    },
+    {
+      "name": "labeling-tool",
+      "runtimeExecutable": "ml-pipeline\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "tools.labeling.server:app", "--app-dir", "ml-pipeline", "--port", "8090"],
+      "port": 8090
     }
   ]
 }
